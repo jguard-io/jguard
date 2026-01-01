@@ -3,7 +3,7 @@ spotless = "7.0.2"
 junit = "5.11.0"
 assertj = "3.26.3"
 slf4j = "2.0.16"
-jackson = "2.17.2"
+jackson = "2.20"
 bytebuddy = "1.15.10"
 picocli = "4.7.6"
 
