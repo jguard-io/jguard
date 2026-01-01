@@ -36,10 +36,11 @@ class EntitlementTest {
     class FilesystemReadTests {
 
         @Test
-        @DisplayName("module can read files in /tmp (entitled)")
+        @DisplayName("module can read files in system temp directory (entitled)")
         void canReadTmpDirectory() throws IOException {
-            // Given: module is entitled to fs.read("/tmp", "**/*")
-            Path tmpDir = Path.of("/tmp");
+            // Given: module is entitled to fs.read (using system temp for cross-platform)
+            // Note: Policy uses "/tmp" but test uses system temp for Windows compatibility
+            Path tmpDir = Path.of(System.getProperty("java.io.tmpdir"));
 
             // When: we list the directory
             long count = Files.list(tmpDir).count();

@@ -15,29 +15,8 @@ allprojects {
   version = "0.1.0-SNAPSHOT"
 }
 
-// License header configuration
-def licenseHeaderJava = file("gradle/license/java-header.txt")
-def licenseHeaderSlashSlash = file("gradle/license/slashslash-header.txt")
-
-spotless {
-  // Java files (including module-info.java)
-  java {
-    target "*/src/**/*.java"
-    licenseHeaderFile(licenseHeaderJava)
-  }
-
-  // jGuard policy files (use same style as Java)
-  format "jguard", {
-    target "*/src/**/*.jguard"
-    licenseHeaderFile(licenseHeaderJava, "security ")
-  }
-
-  // Gradle build files
-  groovyGradle {
-    target "**/*.gradle"
-    licenseHeaderFile(licenseHeaderSlashSlash, "(plugins|import|buildscript|pluginManagement|dependencyResolutionManagement|dependencies|rootProject)")
-  }
-}
+// Spotless configuration (license headers, formatting, linting)
+apply from: "gradle/spotless.gradle"
 
 subprojects {
   apply plugin: "java-library"

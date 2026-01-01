@@ -14,14 +14,12 @@ package org.jguard.core;
  */
 public final class JGuard {
 
-    private JGuard() {
-        // Static utility class
-    }
+  private JGuard() {
+    // Static utility class
+  }
 
-    /**
-     * Returns the jGuard runtime version.
-     */
-    public static String version() {
-        return "0.1.0-SNAPSHOT";
-    }
+  /** Returns the jGuard runtime version. */
+  public static String version() {
+    return "0.1.0-SNAPSHOT";
+  }
 }

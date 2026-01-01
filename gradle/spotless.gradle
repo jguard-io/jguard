@@ -1,0 +1,61 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+
+// Spotless code formatting and linting configuration
+// Applied from root build.gradle
+
+def licenseHeaderJava = rootProject.file("gradle/license/java-header.txt")
+def licenseHeaderSlashSlash = rootProject.file("gradle/license/slashslash-header.txt")
+
+spotless {
+  // Java files
+  java {
+    target "*/src/**/*.java"
+
+    // License header
+    licenseHeaderFile(licenseHeaderJava)
+
+    // Remove unused imports
+    removeUnusedImports()
+
+    // Google Java Format - handles import ordering (no wildcards) and consistent style
+    googleJavaFormat()
+
+    // Custom lint: no wildcard imports (defense in depth)
+    custom "noWildcardImports", { text ->
+      def matcher = (text =~ /import\s+[\w.]+\.\*\s*;/)
+      if (matcher.find()) {
+        throw new AssertionError("Wildcard imports are not allowed: ${matcher.group()}")
+      }
+      text
+    }
+
+    // Custom lint: line length limit (140 characters)
+    custom "lineLength", { text ->
+      text.split("\n", -1).eachWithIndex { line, idx ->
+        if (line.length() > 140) {
+          throw new AssertionError("Line ${idx + 1} exceeds 140 characters (${line.length()} chars): ${line.take(50)}...")
+        }
+      }
+      text
+    }
+  }
+
+  // jGuard policy files
+  format "jguard", {
+    target "*/src/**/*.jguard"
+    licenseHeaderFile(licenseHeaderJava, "security ")
+  }
+
+  // Gradle build files
+  groovyGradle {
+    target "**/*.gradle"
+    targetExclude "gradle/spotless.gradle" // Self-referential, already has header
+    licenseHeaderFile(licenseHeaderSlashSlash, "(plugins|import|buildscript|pluginManagement|dependencyResolutionManagement|dependencies|rootProject)")
+  }
+}

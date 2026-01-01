@@ -16,6 +16,7 @@ dependencies {
 }
 
 application {
-  mainClass = "org.jguard.cli.Main"
+  mainClass = "org.jguard.cli.JGuardc"
+  applicationName = "jguardc"
 }
 
