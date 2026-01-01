@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +41,7 @@ class JGuardcTest {
   // ===== Success cases =====
 
   @Test
-  void compilesValidPolicy() throws IOException {
+  void compilesValidPolicy() throws IOException, URISyntaxException {
     Path source = getResource("valid-policy.jguard");
     Path output = tempDir.resolve("policy.bin");
 
@@ -59,7 +60,7 @@ class JGuardcTest {
   }
 
   @Test
-  void compilesWithJsonOutput() throws IOException {
+  void compilesWithJsonOutput() throws IOException, URISyntaxException {
     Path source = getResource("valid-policy.jguard");
     Path binOutput = tempDir.resolve("policy.bin");
     Path jsonOutput = tempDir.resolve("policy.json");
@@ -78,7 +79,7 @@ class JGuardcTest {
   }
 
   @Test
-  void verboseModeShowsProgress() throws IOException {
+  void verboseModeShowsProgress() throws IOException, URISyntaxException {
     Path source = getResource("valid-policy.jguard");
     Path output = tempDir.resolve("policy.bin");
 
@@ -91,7 +92,7 @@ class JGuardcTest {
   }
 
   @Test
-  void createsOutputDirectoryIfNeeded() throws IOException {
+  void createsOutputDirectoryIfNeeded() throws IOException, URISyntaxException {
     Path source = getResource("valid-policy.jguard");
     Path output = tempDir.resolve("nested/dir/policy.bin");
 
@@ -115,7 +116,7 @@ class JGuardcTest {
   }
 
   @Test
-  void failsOnUnknownCapability() throws IOException {
+  void failsOnUnknownCapability() throws IOException, URISyntaxException {
     Path source = getResource("unknown-capability.jguard");
     Path output = tempDir.resolve("policy.bin");
 
@@ -129,7 +130,7 @@ class JGuardcTest {
   }
 
   @Test
-  void failsOnSyntaxError() throws IOException {
+  void failsOnSyntaxError() throws IOException, URISyntaxException {
     Path source = getResource("syntax-error.jguard");
     Path output = tempDir.resolve("policy.bin");
 
@@ -141,7 +142,7 @@ class JGuardcTest {
   }
 
   @Test
-  void errorOutputIncludesLineAndColumn() throws IOException {
+  void errorOutputIncludesLineAndColumn() throws IOException, URISyntaxException {
     Path source = getResource("unknown-capability.jguard");
     Path output = tempDir.resolve("policy.bin");
 
@@ -176,7 +177,7 @@ class JGuardcTest {
   }
 
   @Test
-  void failsWhenOutputNotSpecified() throws IOException {
+  void failsWhenOutputNotSpecified() throws IOException, URISyntaxException {
     Path source = getResource("valid-policy.jguard");
 
     int exitCode = cmd.execute(source.toString());
@@ -197,7 +198,7 @@ class JGuardcTest {
   // ===== Determinism =====
 
   @Test
-  void producesIdenticalOutputForSameInput() throws IOException {
+  void producesIdenticalOutputForSameInput() throws IOException, URISyntaxException {
     Path source = getResource("valid-policy.jguard");
     Path output1 = tempDir.resolve("policy1.bin");
     Path output2 = tempDir.resolve("policy2.bin");
@@ -218,11 +219,12 @@ class JGuardcTest {
 
   // ===== Helper methods =====
 
-  private Path getResource(String name) throws IOException {
+  private Path getResource(String name) throws IOException, URISyntaxException {
     var url = getClass().getClassLoader().getResource(name);
     if (url == null) {
       throw new IOException("Resource not found: " + name);
     }
-    return Path.of(url.getPath());
+    // Use toURI() for cross-platform compatibility (getPath() fails on Windows)
+    return Path.of(url.toURI());
   }
 }
