@@ -1,0 +1,19 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The jGuard Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+security module org.jguard.samples.sandbox {
+
+    // Grant filesystem read access to the entire module
+    entitle module to fs.read("/tmp", "**/*");
+
+    // Grant network outbound to specific packages
+    entitle org.jguard.samples.sandbox.net to network.outbound;
+
+    // Grant thread spawning to the worker package hierarchy
+    entitle org.jguard.samples.sandbox.worker.. to threads.spawn;
+
+}

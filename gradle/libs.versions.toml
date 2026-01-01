@@ -1,0 +1,37 @@
+[versions]
+spotless = "7.0.2"
+junit = "5.11.0"
+assertj = "3.26.3"
+slf4j = "2.0.16"
+jackson = "2.17.2"
+bytebuddy = "1.15.10"
+picocli = "4.7.6"
+
+[libraries]
+# Testing
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit" }
+assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+
+# Logging API (keep implementation choice up to the host)
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+
+# JSON (for policy.json rendering + CLI)
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }
+jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson" }
+
+# Agent instrumentation
+bytebuddy = { module = "net.bytebuddy:byte-buddy", version.ref = "bytebuddy" }
+bytebuddy-agent = { module = "net.bytebuddy:byte-buddy-agent", version.ref = "bytebuddy" }
+
+# CLI
+picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
+
+[bundles]
+jackson = ["jackson-core", "jackson-annotations", "jackson-databind"]
+bytebuddy = ["bytebuddy", "bytebuddy-agent"]
+
+[plugins]
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+

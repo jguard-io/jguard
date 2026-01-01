@@ -1,0 +1,47 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+plugins {
+  id "java"
+  id "application"
+  id "org.jguard.policy"
+}
+
+java {
+  toolchain {
+    languageVersion = JavaLanguageVersion.of(21)
+  }
+}
+
+application {
+  mainClass = "org.jguard.samples.sandbox.Main"
+  mainModule = "org.jguard.samples.sandbox"
+}
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  implementation("org.jguard:core")
+
+  testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
+  testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.11.0")
+  testImplementation("org.assertj:assertj-core:3.26.3")
+}
+
+tasks.withType(JavaCompile).configureEach {
+  options.encoding = "UTF-8"
+}
+
+tasks.withType(Test).configureEach {
+  useJUnitPlatform()
+  testLogging {
+    events "PASSED", "FAILED", "SKIPPED"
+    exceptionFormat "FULL"
+  }
+}

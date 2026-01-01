@@ -1,0 +1,29 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+plugins {
+  id "java"
+}
+
+dependencies {
+  implementation(project(":core"))
+  implementation(project(":policy"))
+  implementation(libs.bundles.bytebuddy)
+  implementation(libs.slf4j.api)
+}
+
+jar {
+  manifest {
+    attributes(
+      "Premain-Class": "org.jguard.agent.JGuardAgent",
+      "Agent-Class": "org.jguard.agent.JGuardAgent",
+      "Can-Redefine-Classes": "true",
+      "Can-Retransform-Classes": "true"
+    )
+  }
+}
+

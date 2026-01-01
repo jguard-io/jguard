@@ -1,0 +1,33 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+pluginManagement {
+  // Include the main jGuard build to get access to the plugin
+  includeBuild("..")
+}
+
+plugins {
+  id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
+}
+
+rootProject.name = "jguard-samples"
+
+dependencyResolutionManagement {
+  repositories {
+    mavenCentral()
+  }
+}
+
+// Include jGuard for runtime dependencies
+includeBuild("..") {
+  dependencySubstitution {
+    substitute(module("org.jguard:core")).using(project(":core"))
+    substitute(module("org.jguard:policy")).using(project(":policy"))
+  }
+}
+
+include("sandbox-demo")

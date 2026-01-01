@@ -1,0 +1,80 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+plugins {
+  id "base"
+  alias(libs.plugins.spotless)
+}
+
+allprojects {
+  group = "org.jguard"
+  version = "0.1.0-SNAPSHOT"
+}
+
+// License header configuration
+def licenseHeaderJava = file("gradle/license/java-header.txt")
+def licenseHeaderSlashSlash = file("gradle/license/slashslash-header.txt")
+
+spotless {
+  // Java files (including module-info.java)
+  java {
+    target "*/src/**/*.java"
+    licenseHeaderFile(licenseHeaderJava)
+  }
+
+  // jGuard policy files (use same style as Java)
+  format "jguard", {
+    target "*/src/**/*.jguard"
+    licenseHeaderFile(licenseHeaderJava, "security ")
+  }
+
+  // Gradle build files
+  groovyGradle {
+    target "**/*.gradle"
+    licenseHeaderFile(licenseHeaderSlashSlash, "(plugins|import|buildscript|pluginManagement|dependencyResolutionManagement|dependencies|rootProject)")
+  }
+}
+
+subprojects {
+  apply plugin: "java-library"
+
+  java {
+    toolchain {
+      languageVersion = JavaLanguageVersion.of(21)
+    }
+    withJavadocJar()
+    withSourcesJar()
+  }
+
+  repositories {
+    mavenCentral()
+  }
+
+  tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.compilerArgs += ["-Xlint:all", "-Werror"]
+  }
+
+  tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    testLogging {
+      events "FAILED", "SKIPPED"
+      exceptionFormat "FULL"
+    }
+  }
+
+  dependencies {
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.jupiter.engine)
+    testImplementation(libs.assertj)
+  }
+
+  // ---- Artifact naming: jguard-<module> ----
+  // :core -> jguard-core, :policy-java -> jguard-policy-java, etc.
+  def moduleName = project.path.substring(1).replace(":", "-")
+  archivesBaseName = "jguard-${moduleName}"
+}

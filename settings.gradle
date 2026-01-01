@@ -1,0 +1,39 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+pluginManagement {
+  repositories {
+    gradlePluginPortal()
+    mavenCentral()
+  }
+}
+
+plugins {
+  id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
+}
+
+rootProject.name = "jguard"
+
+enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+
+dependencyResolutionManagement {
+  repositories {
+    mavenCentral()
+  }
+}
+
+// Keep logical project names (used in dependencies) simple:
+include("gradle-plugin", "core", "policy", "policy-java", "agent", "cli")
+
+// Map them to the directory names (same as included names here, but explicit is clearer)
+project(":gradle-plugin").projectDir = file("gradle-plugin")
+project(":core").projectDir = file("core")
+project(":policy").projectDir = file("policy")
+project(":policy-java").projectDir = file("policy-java")
+project(":agent").projectDir = file("agent")
+project(":cli").projectDir = file("cli")
+
