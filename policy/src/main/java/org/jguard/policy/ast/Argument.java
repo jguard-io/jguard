@@ -15,10 +15,19 @@ package org.jguard.policy.ast;
 public sealed interface Argument
     permits Argument.Identifier, Argument.StringLiteral, Argument.IntegerLiteral {
 
-  /** Returns the source location of this argument. */
+  /**
+   * Returns the source location of this argument.
+   *
+   * @return the source location
+   */
   SourceLocation location();
 
-  /** An identifier argument. */
+  /**
+   * An identifier argument.
+   *
+   * @param value the identifier value
+   * @param location the source location
+   */
   record Identifier(String value, SourceLocation location) implements Argument {
     @Override
     public String toString() {
@@ -26,7 +35,12 @@ public sealed interface Argument
     }
   }
 
-  /** A string literal argument. */
+  /**
+   * A string literal argument.
+   *
+   * @param value the string value
+   * @param location the source location
+   */
   record StringLiteral(String value, SourceLocation location) implements Argument {
     @Override
     public String toString() {
@@ -49,7 +63,12 @@ public sealed interface Argument
     }
   }
 
-  /** An integer literal argument. */
+  /**
+   * An integer literal argument.
+   *
+   * @param value the integer value
+   * @param location the source location
+   */
   record IntegerLiteral(long value, SourceLocation location) implements Argument {
     @Override
     public String toString() {

@@ -68,14 +68,26 @@ public final class BinaryPolicyWriter {
     // Static utility class
   }
 
-  /** Writes a policy descriptor to a byte array. */
+  /**
+   * Writes a policy descriptor to a byte array.
+   *
+   * @param policy the policy descriptor to write
+   * @return the serialized bytes
+   * @throws IOException if an I/O error occurs
+   */
   public static byte[] toBytes(PolicyDescriptor policy) throws IOException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     write(policy, baos);
     return baos.toByteArray();
   }
 
-  /** Writes a policy descriptor to an output stream. */
+  /**
+   * Writes a policy descriptor to an output stream.
+   *
+   * @param policy the policy descriptor to write
+   * @param out the output stream to write to
+   * @throws IOException if an I/O error occurs
+   */
   public static void write(PolicyDescriptor policy, OutputStream out) throws IOException {
     DataOutputStream dos = new DataOutputStream(out);
 

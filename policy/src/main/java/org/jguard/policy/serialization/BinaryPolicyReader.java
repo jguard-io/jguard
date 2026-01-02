@@ -44,17 +44,35 @@ public final class BinaryPolicyReader {
     // Static utility class
   }
 
-  /** Reads a policy descriptor from a file path. */
+  /**
+   * Reads a policy descriptor from a file path.
+   *
+   * @param path the path to the policy file
+   * @return the deserialized policy descriptor
+   * @throws IOException if an I/O error occurs
+   */
   public static PolicyDescriptor fromFile(Path path) throws IOException {
     return fromBytes(Files.readAllBytes(path));
   }
 
-  /** Reads a policy descriptor from a byte array. */
+  /**
+   * Reads a policy descriptor from a byte array.
+   *
+   * @param bytes the serialized policy bytes
+   * @return the deserialized policy descriptor
+   * @throws IOException if an I/O error occurs
+   */
   public static PolicyDescriptor fromBytes(byte[] bytes) throws IOException {
     return read(new ByteArrayInputStream(bytes));
   }
 
-  /** Reads a policy descriptor from an input stream. */
+  /**
+   * Reads a policy descriptor from an input stream.
+   *
+   * @param in the input stream to read from
+   * @return the deserialized policy descriptor
+   * @throws IOException if an I/O error occurs
+   */
   public static PolicyDescriptor read(InputStream in) throws IOException {
     DataInputStream dis = new DataInputStream(in);
 

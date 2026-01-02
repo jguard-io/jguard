@@ -36,12 +36,22 @@ public final class Lexer {
   private int column = 1;
   private int tokenStartColumn = 1;
 
+  /**
+   * Creates a new lexer for the given source text.
+   *
+   * @param source the source text to tokenize
+   * @param sourcePath the source file path for error reporting
+   */
   public Lexer(String source, String sourcePath) {
     this.source = source;
     this.sourcePath = sourcePath;
   }
 
-  /** Tokenizes the source and returns the result. */
+  /**
+   * Tokenizes the source and returns the result.
+   *
+   * @return the lexer result containing tokens and any errors
+   */
   public LexerResult tokenize() {
     while (!isAtEnd()) {
       start = current;
@@ -260,14 +270,31 @@ public final class Lexer {
     return isAlpha(c) || isDigit(c);
   }
 
-  /** Result of lexical analysis. */
+  /**
+   * Result of lexical analysis.
+   *
+   * @param tokens the tokens produced by lexical analysis
+   * @param errors the errors encountered during lexical analysis
+   */
   public record LexerResult(List<Token> tokens, List<LexerError> errors) {
+    /**
+     * Returns true if there were any lexical errors.
+     *
+     * @return true if errors exist
+     */
     public boolean hasErrors() {
       return !errors.isEmpty();
     }
   }
 
-  /** A lexical error. */
+  /**
+   * A lexical error.
+   *
+   * @param message the error message
+   * @param sourcePath the source file path
+   * @param line the 1-based line number where the error occurred
+   * @param column the 1-based column number where the error occurred
+   */
   public record LexerError(String message, String sourcePath, int line, int column) {
     @Override
     public String toString() {

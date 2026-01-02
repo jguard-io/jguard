@@ -21,6 +21,7 @@ import java.util.Objects;
 public record EntitlementDeclaration(
     Subject subject, Capability capability, SourceLocation location) {
 
+  /** Compact constructor that validates the record fields. */
   public EntitlementDeclaration {
     Objects.requireNonNull(subject, "subject");
     Objects.requireNonNull(capability, "capability");

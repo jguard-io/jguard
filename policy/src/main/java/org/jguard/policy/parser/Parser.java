@@ -31,12 +31,22 @@ public final class Parser {
   private final List<ParseError> errors = new ArrayList<>();
   private int current = 0;
 
+  /**
+   * Creates a new parser for the given tokens.
+   *
+   * @param tokens the tokens to parse
+   * @param sourcePath the source file path for error reporting
+   */
   public Parser(List<Token> tokens, String sourcePath) {
     this.tokens = tokens;
     this.sourcePath = sourcePath;
   }
 
-  /** Parses the tokens and returns the result. */
+  /**
+   * Parses the tokens and returns the result.
+   *
+   * @return the parse result containing the AST and any errors
+   */
   public ParseResult parse() {
     try {
       PolicyFile policyFile = policyFile();
@@ -223,18 +233,40 @@ public final class Parser {
     }
   }
 
-  /** Result of parsing. */
+  /**
+   * Result of parsing.
+   *
+   * @param policyFile the parsed policy file, or null if parsing failed
+   * @param errors the list of parse errors encountered
+   */
   public record ParseResult(PolicyFile policyFile, List<ParseError> errors) {
+    /**
+     * Returns true if there were any parse errors.
+     *
+     * @return true if errors exist
+     */
     public boolean hasErrors() {
       return !errors.isEmpty();
     }
 
+    /**
+     * Returns true if parsing succeeded without errors.
+     *
+     * @return true if parsing was successful
+     */
     public boolean isSuccess() {
       return policyFile != null && errors.isEmpty();
     }
   }
 
-  /** A parse error. */
+  /**
+   * A parse error.
+   *
+   * @param message the error message
+   * @param sourcePath the source file path
+   * @param line the 1-based line number
+   * @param column the 1-based column number
+   */
   public record ParseError(String message, String sourcePath, int line, int column) {
     @Override
     public String toString() {

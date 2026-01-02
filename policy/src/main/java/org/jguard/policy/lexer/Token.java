@@ -17,12 +17,27 @@ package org.jguard.policy.lexer;
  */
 public record Token(TokenType type, String value, int line, int column) {
 
-  /** Creates a token without a value (for punctuation and keywords). */
+  /**
+   * Creates a token without a value (for punctuation and keywords).
+   *
+   * @param type the token type
+   * @param line the 1-based line number
+   * @param column the 1-based column number
+   * @return the token
+   */
   public static Token of(TokenType type, int line, int column) {
     return new Token(type, null, line, column);
   }
 
-  /** Creates a token with a value (for identifiers and literals). */
+  /**
+   * Creates a token with a value (for identifiers and literals).
+   *
+   * @param type the token type
+   * @param value the token value
+   * @param line the 1-based line number
+   * @param column the 1-based column number
+   * @return the token
+   */
   public static Token of(TokenType type, String value, int line, int column) {
     return new Token(type, value, line, column);
   }

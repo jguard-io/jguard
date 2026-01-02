@@ -27,6 +27,7 @@ import java.util.Objects;
  */
 public record PackagePattern(List<String> segments, MatchType matchType, SourceLocation location) {
 
+  /** Compact constructor that validates and normalizes the record fields. */
   public PackagePattern {
     Objects.requireNonNull(segments, "segments");
     Objects.requireNonNull(matchType, "matchType");
@@ -37,7 +38,11 @@ public record PackagePattern(List<String> segments, MatchType matchType, SourceL
     }
   }
 
-  /** Returns the package name as a dot-separated string. */
+  /**
+   * Returns the package name as a dot-separated string.
+   *
+   * @return the package name (e.g., "com.example.pkg")
+   */
   public String packageName() {
     return String.join(".", segments);
   }

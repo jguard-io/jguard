@@ -16,11 +16,20 @@ package org.jguard.policy.model;
 public sealed interface CapabilityArgument
     permits CapabilityArgument.StringArg, CapabilityArgument.IntegerArg {
 
-  /** Returns the canonical string representation for serialization. */
+  /**
+   * Returns the canonical string representation for serialization.
+   *
+   * @return the canonical string
+   */
   String toCanonicalString();
 
-  /** A string argument. */
+  /**
+   * A string argument.
+   *
+   * @param value the string value
+   */
   record StringArg(String value) implements CapabilityArgument {
+    /** Compact constructor that validates the value is not null. */
     public StringArg {
       if (value == null) {
         throw new IllegalArgumentException("value cannot be null");
@@ -59,7 +68,11 @@ public sealed interface CapabilityArgument
     }
   }
 
-  /** An integer argument. */
+  /**
+   * An integer argument.
+   *
+   * @param value the integer value
+   */
   record IntegerArg(long value) implements CapabilityArgument {
     @Override
     public String toCanonicalString() {

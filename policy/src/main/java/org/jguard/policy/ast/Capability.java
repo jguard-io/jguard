@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 public record Capability(
     List<String> nameSegments, List<Argument> arguments, SourceLocation location) {
 
+  /** Compact constructor that validates and normalizes the record fields. */
   public Capability {
     Objects.requireNonNull(nameSegments, "nameSegments");
     Objects.requireNonNull(arguments, "arguments");
@@ -34,12 +35,20 @@ public record Capability(
     }
   }
 
-  /** Returns the capability name as a dot-separated string. */
+  /**
+   * Returns the capability name as a dot-separated string.
+   *
+   * @return the capability name (e.g., "fs.read")
+   */
   public String name() {
     return String.join(".", nameSegments);
   }
 
-  /** Returns true if this capability has arguments. */
+  /**
+   * Returns true if this capability has arguments.
+   *
+   * @return true if arguments are present
+   */
   public boolean hasArguments() {
     return !arguments.isEmpty();
   }

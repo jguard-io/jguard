@@ -47,21 +47,39 @@ public final class JsonPolicyWriter {
     // Static utility class
   }
 
-  /** Writes a policy descriptor to JSON string. */
+  /**
+   * Writes a policy descriptor to JSON string.
+   *
+   * @param policy the policy descriptor to write
+   * @return the JSON string
+   * @throws IOException if an I/O error occurs
+   */
   public static String toJson(PolicyDescriptor policy) throws IOException {
     StringWriter writer = new StringWriter();
     write(policy, writer);
     return writer.toString();
   }
 
-  /** Writes a policy descriptor to an output stream. */
+  /**
+   * Writes a policy descriptor to an output stream.
+   *
+   * @param policy the policy descriptor to write
+   * @param out the output stream to write to
+   * @throws IOException if an I/O error occurs
+   */
   public static void write(PolicyDescriptor policy, OutputStream out) throws IOException {
     JsonGenerator gen = MAPPER.createGenerator(out);
     writePolicy(gen, policy);
     gen.flush();
   }
 
-  /** Writes a policy descriptor to a writer. */
+  /**
+   * Writes a policy descriptor to a writer.
+   *
+   * @param policy the policy descriptor to write
+   * @param out the writer to write to
+   * @throws IOException if an I/O error occurs
+   */
   public static void write(PolicyDescriptor policy, Writer out) throws IOException {
     JsonGenerator gen = MAPPER.createGenerator(out);
     writePolicy(gen, policy);

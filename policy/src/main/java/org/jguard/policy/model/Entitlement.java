@@ -24,6 +24,7 @@ public record Entitlement(SubjectPattern subject, CapabilityGrant capability)
   private static final Comparator<Entitlement> COMPARATOR =
       Comparator.comparing(Entitlement::subject).thenComparing(Entitlement::capability);
 
+  /** Compact constructor that validates the record fields. */
   public Entitlement {
     Objects.requireNonNull(subject, "subject");
     Objects.requireNonNull(capability, "capability");

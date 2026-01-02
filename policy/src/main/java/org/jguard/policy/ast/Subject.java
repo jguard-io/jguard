@@ -14,10 +14,18 @@ package org.jguard.policy.ast;
  */
 public sealed interface Subject permits Subject.Module, Subject.Package {
 
-  /** Returns the source location of this subject. */
+  /**
+   * Returns the source location of this subject.
+   *
+   * @return the source location
+   */
   SourceLocation location();
 
-  /** The entire module as a subject. */
+  /**
+   * The entire module as a subject.
+   *
+   * @param location the source location
+   */
   record Module(SourceLocation location) implements Subject {
     @Override
     public String toString() {
@@ -25,7 +33,12 @@ public sealed interface Subject permits Subject.Module, Subject.Package {
     }
   }
 
-  /** A package pattern as a subject. */
+  /**
+   * A package pattern as a subject.
+   *
+   * @param pattern the package pattern
+   * @param location the source location
+   */
   record Package(PackagePattern pattern, SourceLocation location) implements Subject {
     @Override
     public String toString() {
