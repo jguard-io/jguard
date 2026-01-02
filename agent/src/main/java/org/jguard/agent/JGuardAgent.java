@@ -11,6 +11,7 @@ import static net.bytebuddy.matcher.ElementMatchers.isConstructor;
 import static net.bytebuddy.matcher.ElementMatchers.named;
 import static net.bytebuddy.matcher.ElementMatchers.none;
 import static net.bytebuddy.matcher.ElementMatchers.takesArgument;
+import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
 
 import java.io.File;
 import java.io.IOException;
@@ -275,6 +276,52 @@ public final class JGuardAgent {
 
       setWriteCallback.invoke(null, writeCallback);
 
+      // Set up network.outbound callback
+      java.lang.reflect.Method setNetworkCallback =
+          enforcerClass.getMethod("setNetworkOutboundCallback", java.util.function.Function.class);
+
+      java.util.function.Function<Object, SecurityException> networkCallback =
+          (bootstrapContext) -> {
+            try {
+              java.lang.reflect.Method getPackage = callerContextClass.getMethod("packageName");
+              java.lang.reflect.Method getModule = callerContextClass.getMethod("moduleName");
+              String packageName = (String) getPackage.invoke(bootstrapContext);
+              String moduleName = (String) getModule.invoke(bootstrapContext);
+
+              org.jguard.bootstrap.BootstrapEnforcer.CallerContext context =
+                  new org.jguard.bootstrap.BootstrapEnforcer.CallerContext(packageName, moduleName);
+
+              return enforcer.checkNetworkOutboundReturningException(context);
+            } catch (Exception e) {
+              throw new RuntimeException("Failed to extract caller context", e);
+            }
+          };
+
+      setNetworkCallback.invoke(null, networkCallback);
+
+      // Set up network.listen callback
+      java.lang.reflect.Method setNetworkListenCallback =
+          enforcerClass.getMethod("setNetworkListenCallback", java.util.function.BiFunction.class);
+
+      java.util.function.BiFunction<Object, Integer, SecurityException> networkListenCallback =
+          (bootstrapContext, port) -> {
+            try {
+              java.lang.reflect.Method getPackage = callerContextClass.getMethod("packageName");
+              java.lang.reflect.Method getModule = callerContextClass.getMethod("moduleName");
+              String packageName = (String) getPackage.invoke(bootstrapContext);
+              String moduleName = (String) getModule.invoke(bootstrapContext);
+
+              org.jguard.bootstrap.BootstrapEnforcer.CallerContext context =
+                  new org.jguard.bootstrap.BootstrapEnforcer.CallerContext(packageName, moduleName);
+
+              return enforcer.checkNetworkListenReturningException(context, port);
+            } catch (Exception e) {
+              throw new RuntimeException("Failed to extract caller context", e);
+            }
+          };
+
+      setNetworkListenCallback.invoke(null, networkListenCallback);
+
       // Set enforcement mode
       java.lang.reflect.Method setMode = enforcerClass.getMethod("setMode", modeClass);
       Object bootstrapMode = getEnumConstant(modeClass, config.mode().name());
@@ -293,11 +340,18 @@ public final class JGuardAgent {
   }
 
   private static void installInstrumentation(Instrumentation inst) {
-    LOG.debug("Installing filesystem instrumentation...");
+    LOG.debug("Installing instrumentation...");
+
+    // Check if retransformation is supported
+    if (!inst.isRetransformClassesSupported()) {
+      LOG.warn("Retransformation not supported - network instrumentation may not work");
+    }
 
     new AgentBuilder.Default()
         .disableClassFormatChanges()
         .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+        .with(AgentBuilder.RedefinitionStrategy.DiscoveryStrategy.Reiterating.INSTANCE)
+        .with(AgentBuilder.TypeStrategy.Default.REDEFINE)
         .with(new LoggingListener())
         .ignore(none())
         // Instrument java.nio.file.Files - the primary NIO filesystem API
@@ -422,9 +476,84 @@ public final class JGuardAgent {
                     .visit(
                         Advice.to(FilesystemInterceptor.WriteStringPathAdvice.class)
                             .on(isConstructor().and(takesArgument(0, String.class)))))
+        // ========== NETWORK INSTRUMENTATION ==========
+        // Instrument java.net.Socket - the primary TCP socket API
+        .type(named("java.net.Socket"))
+        .transform(
+            (builder, typeDescription, classLoader, module, protectionDomain) ->
+                builder
+                    // Socket(String host, int port)
+                    .visit(
+                        Advice.to(NetworkInterceptor.SocketHostPortAdvice.class)
+                            .on(
+                                isConstructor()
+                                    .and(takesArgument(0, String.class))
+                                    .and(takesArgument(1, int.class))
+                                    .and(takesArguments(2))))
+                    // Socket(InetAddress address, int port)
+                    .visit(
+                        Advice.to(NetworkInterceptor.SocketInetAddressPortAdvice.class)
+                            .on(
+                                isConstructor()
+                                    .and(takesArgument(0, java.net.InetAddress.class))
+                                    .and(takesArgument(1, int.class))
+                                    .and(takesArguments(2))))
+                    // Socket.connect(SocketAddress, int timeout)
+                    .visit(
+                        Advice.to(NetworkInterceptor.SocketConnectAdvice.class)
+                            .on(
+                                named("connect")
+                                    .and(takesArgument(0, java.net.SocketAddress.class)))))
+        // Instrument java.nio.channels.SocketChannel - NIO socket API
+        .type(named("java.nio.channels.SocketChannel"))
+        .transform(
+            (builder, typeDescription, classLoader, module, protectionDomain) ->
+                builder.visit(
+                    Advice.to(NetworkInterceptor.SocketChannelConnectAdvice.class)
+                        .on(named("connect").and(takesArgument(0, java.net.SocketAddress.class)))))
+        // ========== SERVER SOCKET INSTRUMENTATION (network.listen) ==========
+        // Instrument java.net.ServerSocket - the primary server socket API
+        .type(named("java.net.ServerSocket"))
+        .transform(
+            (builder, typeDescription, classLoader, module, protectionDomain) ->
+                builder
+                    // ServerSocket(int port)
+                    .visit(
+                        Advice.to(NetworkInterceptor.ServerSocketPortAdvice.class)
+                            .on(
+                                isConstructor()
+                                    .and(takesArgument(0, int.class))
+                                    .and(takesArguments(1))))
+                    // ServerSocket(int port, int backlog)
+                    .visit(
+                        Advice.to(NetworkInterceptor.ServerSocketPortAdvice.class)
+                            .on(
+                                isConstructor()
+                                    .and(takesArgument(0, int.class))
+                                    .and(takesArgument(1, int.class))
+                                    .and(takesArguments(2))))
+                    // ServerSocket(int port, int backlog, InetAddress bindAddr)
+                    .visit(
+                        Advice.to(NetworkInterceptor.ServerSocketPortAdvice.class)
+                            .on(
+                                isConstructor()
+                                    .and(takesArgument(0, int.class))
+                                    .and(takesArgument(1, int.class))
+                                    .and(takesArgument(2, java.net.InetAddress.class))))
+                    // ServerSocket.bind(SocketAddress)
+                    .visit(
+                        Advice.to(NetworkInterceptor.ServerSocketBindAdvice.class)
+                            .on(named("bind").and(takesArgument(0, java.net.SocketAddress.class)))))
+        // Instrument java.nio.channels.ServerSocketChannel - NIO server socket API
+        .type(named("java.nio.channels.ServerSocketChannel"))
+        .transform(
+            (builder, typeDescription, classLoader, module, protectionDomain) ->
+                builder.visit(
+                    Advice.to(NetworkInterceptor.ServerSocketChannelBindAdvice.class)
+                        .on(named("bind").and(takesArgument(0, java.net.SocketAddress.class)))))
         .installOn(inst);
 
-    LOG.debug("Filesystem instrumentation installed");
+    LOG.debug("Instrumentation installed");
   }
 
   /**
@@ -457,7 +586,12 @@ public final class JGuardAgent {
     @Override
     public void onDiscovery(
         String typeName, ClassLoader classLoader, JavaModule module, boolean loaded) {
-      // Not logged to avoid noise
+      // Log discovery of classes we're interested in
+      if (typeName.contains("Socket")
+          || typeName.contains("ServerSocket")
+          || typeName.contains("Files")) {
+        LOG.debug("Discovered: {} (loaded={})", typeName, loaded);
+      }
     }
 
     @Override
@@ -467,7 +601,7 @@ public final class JGuardAgent {
         JavaModule module,
         boolean loaded,
         DynamicType dynamicType) {
-      LOG.debug("Transformed: {}", typeDescription.getName());
+      LOG.info("Transformed: {} (loaded={})", typeDescription.getName(), loaded);
     }
 
     @Override
@@ -476,7 +610,11 @@ public final class JGuardAgent {
         ClassLoader classLoader,
         JavaModule module,
         boolean loaded) {
-      // Not logged to avoid noise
+      // Log ignored classes we're interested in
+      String name = typeDescription.getName();
+      if (name.contains("Socket") || name.equals("java.nio.file.Files")) {
+        LOG.debug("Ignored: {} (loaded={})", name, loaded);
+      }
     }
 
     @Override
@@ -486,7 +624,10 @@ public final class JGuardAgent {
         JavaModule module,
         boolean loaded,
         Throwable throwable) {
-      LOG.warn("Error transforming: {}", typeName, throwable);
+      LOG.error("Error transforming: {} - {}", typeName, throwable.getMessage());
+      if (typeName.contains("Socket")) {
+        LOG.error("Socket transformation error details:", throwable);
+      }
     }
 
     @Override

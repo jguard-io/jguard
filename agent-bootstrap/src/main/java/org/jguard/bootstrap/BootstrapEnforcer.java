@@ -8,8 +8,11 @@
 package org.jguard.bootstrap;
 
 import java.io.File;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 
 /**
  * Bootstrap enforcement bridge for jGuard.
@@ -65,6 +68,21 @@ public final class BootstrapEnforcer {
    */
   private static volatile BiFunction<CallerContext, Path, SecurityException> fsWriteCallback;
 
+  /**
+   * Callback for network outbound enforcement.
+   *
+   * <p>Parameters: (callerContext) Returns: null if allowed, SecurityException if denied
+   */
+  private static volatile Function<CallerContext, SecurityException> networkOutboundCallback;
+
+  /**
+   * Callback for network listen enforcement.
+   *
+   * <p>Parameters: (callerContext, port) Returns: null if allowed, SecurityException if denied
+   */
+  private static volatile BiFunction<CallerContext, Integer, SecurityException>
+      networkListenCallback;
+
   /** Current enforcement mode. */
   private static volatile EnforcementMode mode = EnforcementMode.STRICT;
 
@@ -105,6 +123,34 @@ public final class BootstrapEnforcer {
       BiFunction<CallerContext, Path, SecurityException> callback) {
     fsWriteCallback = callback;
     LOG.debug("Filesystem write enforcement callback configured");
+  }
+
+  /**
+   * Configures the network outbound enforcement callback.
+   *
+   * <p>Called by the agent during initialization.
+   *
+   * @param callback function that takes (CallerContext) and returns null if allowed,
+   *     SecurityException if denied
+   */
+  public static void setNetworkOutboundCallback(
+      Function<CallerContext, SecurityException> callback) {
+    networkOutboundCallback = callback;
+    LOG.debug("Network outbound enforcement callback configured");
+  }
+
+  /**
+   * Configures the network listen enforcement callback.
+   *
+   * <p>Called by the agent during initialization.
+   *
+   * @param callback function that takes (CallerContext, Integer port) and returns null if allowed,
+   *     SecurityException if denied
+   */
+  public static void setNetworkListenCallback(
+      BiFunction<CallerContext, Integer, SecurityException> callback) {
+    networkListenCallback = callback;
+    LOG.debug("Network listen enforcement callback configured");
   }
 
   /**
@@ -336,6 +382,261 @@ public final class BootstrapEnforcer {
       throw se;
     } catch (Exception e) {
       handleEnforcementError("Enforcement callback failed", path, e);
+    }
+  }
+
+  // ========== NETWORK OUTBOUND ENFORCEMENT ==========
+
+  /**
+   * Called by ByteBuddy advice when a network connect operation is intercepted (host/port variant).
+   *
+   * @param host the host being connected to
+   * @param port the port being connected to
+   */
+  public static void onNetworkConnect(String host, int port) {
+    onNetworkConnectInternal(host, port);
+  }
+
+  /**
+   * Called by ByteBuddy advice when a network connect operation is intercepted (InetSocketAddress
+   * variant).
+   *
+   * @param address the socket address being connected to
+   */
+  public static void onNetworkConnect(InetSocketAddress address) {
+    if (address != null) {
+      String host = address.getHostString();
+      int port = address.getPort();
+      onNetworkConnectInternal(host, port);
+    }
+  }
+
+  /**
+   * Called by ByteBuddy advice when a network connect operation is intercepted (InetAddress
+   * variant).
+   *
+   * @param address the address being connected to
+   * @param port the port being connected to
+   */
+  public static void onNetworkConnect(InetAddress address, int port) {
+    if (address != null) {
+      onNetworkConnectInternal(address.getHostAddress(), port);
+    }
+  }
+
+  private static void onNetworkConnectInternal(String host, int port) {
+    // Prevent re-entrancy - if we're already in enforcement, allow
+    if (Boolean.TRUE.equals(IN_ENFORCEMENT.get())) {
+      return;
+    }
+
+    Function<CallerContext, SecurityException> callback = networkOutboundCallback;
+    if (callback == null) {
+      // Agent not initialized - allow (JVM bootstrap)
+      return;
+    }
+
+    try {
+      IN_ENFORCEMENT.set(true);
+      enforceNetworkOutbound(host, port, callback);
+    } finally {
+      IN_ENFORCEMENT.set(false);
+    }
+  }
+
+  private static void enforceNetworkOutbound(
+      String host, int port, Function<CallerContext, SecurityException> callback) {
+    CallerInfo caller;
+    try {
+      caller = determineCallerInfo();
+    } catch (Exception e) {
+      handleNetworkEnforcementError("Failed to determine caller", host, port, e);
+      return;
+    }
+
+    String callerPackage = caller.packageName();
+    String callerModule = caller.moduleName();
+
+    // Handle unknown caller based on mode
+    if ("unknown".equals(callerPackage)) {
+      handleUnknownNetworkCaller(host, port);
+      return;
+    }
+
+    try {
+      CallerContext context = caller.toContext();
+      SecurityException denial = callback.apply(context);
+
+      if (denial != null) {
+        // Access denied
+        if (logDenied) {
+          LOG.warn(
+              "DENIED network.outbound: package={}, module={}, target={}:{}",
+              callerPackage,
+              callerModule,
+              host,
+              port);
+        }
+        if (mode.blocksOnDenied()) {
+          throw denial;
+        }
+      } else {
+        // Access allowed
+        if (logAllowed) {
+          LOG.info(
+              "ALLOWED network.outbound: package={}, module={}, target={}:{}",
+              callerPackage,
+              callerModule,
+              host,
+              port);
+        }
+      }
+    } catch (SecurityException se) {
+      // Re-throw security exceptions
+      throw se;
+    } catch (Exception e) {
+      handleNetworkEnforcementError("Enforcement callback failed", host, port, e);
+    }
+  }
+
+  private static void handleUnknownNetworkCaller(String host, int port) {
+    // When the caller is "unknown", it typically means the call originated from JVM internals.
+    // We must allow these operations for the JVM to function, even in STRICT mode.
+    LOG.debug("Allowing network.outbound from unknown caller (JVM internal): {}:{}", host, port);
+  }
+
+  private static void handleNetworkEnforcementError(
+      String context, String host, int port, Exception e) {
+    String target = host + ":" + port;
+    if (mode.blocksOnError()) {
+      LOG.error("{}: {} - blocking network access to {}", context, e.getMessage(), target);
+      throw new SecurityException("jGuard: enforcement error - " + context + ": " + e.getMessage());
+    } else {
+      LOG.warn(
+          "{}: {} - allowing network access to {} (mode={})",
+          context,
+          e.getMessage(),
+          target,
+          mode);
+    }
+  }
+
+  // ========== NETWORK LISTEN ENFORCEMENT ==========
+
+  /**
+   * Called by ByteBuddy advice when a server socket bind operation is intercepted (port variant).
+   *
+   * @param port the port being bound to
+   */
+  public static void onNetworkListen(int port) {
+    onNetworkListenInternal(port);
+  }
+
+  /**
+   * Called by ByteBuddy advice when a server socket bind operation is intercepted
+   * (InetSocketAddress variant).
+   *
+   * @param address the socket address being bound to
+   */
+  public static void onNetworkListen(InetSocketAddress address) {
+    if (address != null) {
+      onNetworkListenInternal(address.getPort());
+    } else {
+      // null address means bind to any available port
+      onNetworkListenInternal(0);
+    }
+  }
+
+  private static void onNetworkListenInternal(int port) {
+    // Prevent re-entrancy - if we're already in enforcement, allow
+    if (Boolean.TRUE.equals(IN_ENFORCEMENT.get())) {
+      return;
+    }
+
+    BiFunction<CallerContext, Integer, SecurityException> callback = networkListenCallback;
+    if (callback == null) {
+      // Agent not initialized - allow (JVM bootstrap)
+      return;
+    }
+
+    try {
+      IN_ENFORCEMENT.set(true);
+      enforceNetworkListen(port, callback);
+    } finally {
+      IN_ENFORCEMENT.set(false);
+    }
+  }
+
+  private static void enforceNetworkListen(
+      int port, BiFunction<CallerContext, Integer, SecurityException> callback) {
+    CallerInfo caller;
+    try {
+      caller = determineCallerInfo();
+    } catch (Exception e) {
+      handleNetworkListenEnforcementError("Failed to determine caller", port, e);
+      return;
+    }
+
+    String callerPackage = caller.packageName();
+    String callerModule = caller.moduleName();
+
+    // Handle unknown caller based on mode
+    if ("unknown".equals(callerPackage)) {
+      handleUnknownNetworkListenCaller(port);
+      return;
+    }
+
+    try {
+      CallerContext context = caller.toContext();
+      SecurityException denial = callback.apply(context, port);
+
+      if (denial != null) {
+        // Access denied
+        if (logDenied) {
+          LOG.warn(
+              "DENIED network.listen: package={}, module={}, port={}",
+              callerPackage,
+              callerModule,
+              port);
+        }
+        if (mode.blocksOnDenied()) {
+          throw denial;
+        }
+      } else {
+        // Access allowed
+        if (logAllowed) {
+          LOG.info(
+              "ALLOWED network.listen: package={}, module={}, port={}",
+              callerPackage,
+              callerModule,
+              port);
+        }
+      }
+    } catch (SecurityException se) {
+      // Re-throw security exceptions
+      throw se;
+    } catch (Exception e) {
+      handleNetworkListenEnforcementError("Enforcement callback failed", port, e);
+    }
+  }
+
+  private static void handleUnknownNetworkListenCaller(int port) {
+    // When the caller is "unknown", it typically means the call originated from JVM internals.
+    // We must allow these operations for the JVM to function, even in STRICT mode.
+    LOG.debug("Allowing network.listen from unknown caller (JVM internal): port={}", port);
+  }
+
+  private static void handleNetworkListenEnforcementError(String context, int port, Exception e) {
+    if (mode.blocksOnError()) {
+      LOG.error("{}: {} - blocking network listen on port {}", context, e.getMessage(), port);
+      throw new SecurityException("jGuard: enforcement error - " + context + ": " + e.getMessage());
+    } else {
+      LOG.warn(
+          "{}: {} - allowing network listen on port {} (mode={})",
+          context,
+          e.getMessage(),
+          port,
+          mode);
     }
   }
 

@@ -193,15 +193,43 @@ Exit criteria:
 
 ---
 
-### M4 — Enforcement v1 (network)
+### M4 — Enforcement v1 (network) ✓
 
-* Outbound network blocking
-* Minimal hook set
-* Clear failure messages
+* Outbound network blocking ✓
+* Minimal hook set ✓
+* Clear failure messages ✓
+
+Implementation:
+
+* `network.outbound` capability (0 arguments) grants outbound TCP connection rights
+* Instrumented classes:
+  * `java.net.Socket` - constructors and connect() method
+  * `java.nio.channels.SocketChannel` - connect() method
+* BootstrapEnforcer.onNetworkConnect() callbacks for enforcement
+* PolicyEnforcer.checkNetworkOutbound() for policy evaluation
+* Retransformation support for bootstrap-loaded classes via DiscoveryStrategy.Reiterating
 
 Exit criteria:
 
-* demonstrable prevention of outbound socket creation
+* demonstrable prevention of outbound socket creation ✓
+
+---
+
+### M4.1 — Network Listen Enforcement ✓
+
+* `network.listen` capability grants server socket binding rights
+  * `network.listen` (no arguments) - allows binding to any port
+  * `network.listen(port)` (1 integer argument) - allows binding to specific port only
+* Instrumented classes:
+  * `java.net.ServerSocket` - constructors and bind() method
+  * `java.nio.channels.ServerSocketChannel` - bind() method
+* BootstrapEnforcer.onNetworkListen(port) callbacks for enforcement
+* PolicyEnforcer.checkNetworkListen(context, port) for policy evaluation
+* Separate from network.outbound for fine-grained control
+
+Exit criteria:
+
+* demonstrable prevention of unauthorized server socket creation ✓
 
 ---
 
@@ -229,7 +257,9 @@ Exit criteria:
 ## Initial capability set (v0.1.0)
 
 * `fs.read(root, glob)`
+* `fs.write(root, glob)`
 * `network.outbound`
+* `network.listen`
 
 Everything else deferred.
 
