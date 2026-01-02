@@ -144,14 +144,29 @@ public final class PolicyCompiler {
     return new CompileResult(policy, diagnostics);
   }
 
-  /** Result of compiling source text to a policy descriptor. */
+  /**
+   * Result of compiling source text to a policy descriptor.
+   *
+   * @param policy the compiled policy, or null if compilation failed
+   * @param diagnostics the list of compilation diagnostics
+   */
   public record CompileResult(
       PolicyDescriptor policy, List<CompilationResult.Diagnostic> diagnostics) {
+    /**
+     * Returns true if there were any compilation errors.
+     *
+     * @return true if errors exist
+     */
     public boolean hasErrors() {
       return policy == null
           || diagnostics.stream().anyMatch(d -> d.severity() == CompilationResult.Severity.ERROR);
     }
 
+    /**
+     * Returns true if compilation succeeded without errors.
+     *
+     * @return true if compilation was successful
+     */
     public boolean isSuccess() {
       return policy != null && !hasErrors();
     }

@@ -31,6 +31,7 @@ public record SubjectPattern(Type type, String packageName) implements Comparabl
       Comparator.comparing(SubjectPattern::type)
           .thenComparing(SubjectPattern::packageName, Comparator.nullsFirst(String::compareTo));
 
+  /** Compact constructor that validates the record fields. */
   public SubjectPattern {
     Objects.requireNonNull(type, "type");
     if (type == Type.MODULE && packageName != null) {
@@ -41,27 +42,50 @@ public record SubjectPattern(Type type, String packageName) implements Comparabl
     }
   }
 
-  /** Creates a subject pattern for the entire module. */
+  /**
+   * Creates a subject pattern for the entire module.
+   *
+   * @return the module subject pattern
+   */
   public static SubjectPattern module() {
     return new SubjectPattern(Type.MODULE, null);
   }
 
-  /** Creates a subject pattern for an exact package. */
+  /**
+   * Creates a subject pattern for an exact package.
+   *
+   * @param packageName the package name
+   * @return the subject pattern
+   */
   public static SubjectPattern exactPackage(String packageName) {
     return new SubjectPattern(Type.PACKAGE_EXACT, packageName);
   }
 
-  /** Creates a subject pattern for direct subpackages. */
+  /**
+   * Creates a subject pattern for direct subpackages.
+   *
+   * @param packageName the package name
+   * @return the subject pattern
+   */
   public static SubjectPattern directChildren(String packageName) {
     return new SubjectPattern(Type.PACKAGE_DIRECT_CHILDREN, packageName);
   }
 
-  /** Creates a subject pattern for a package and all descendants. */
+  /**
+   * Creates a subject pattern for a package and all descendants.
+   *
+   * @param packageName the package name
+   * @return the subject pattern
+   */
   public static SubjectPattern recursive(String packageName) {
     return new SubjectPattern(Type.PACKAGE_RECURSIVE, packageName);
   }
 
-  /** Returns the canonical string representation for serialization. */
+  /**
+   * Returns the canonical string representation for serialization.
+   *
+   * @return the canonical string
+   */
   public String toCanonicalString() {
     return switch (type) {
       case MODULE -> "module";

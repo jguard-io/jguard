@@ -25,6 +25,7 @@ public record PolicyDescriptor(
 
   public static final int FORMAT_VERSION = 1;
 
+  /** Compact constructor that validates and normalizes the record fields. */
   public PolicyDescriptor {
     Objects.requireNonNull(moduleName, "moduleName");
     Objects.requireNonNull(entitlements, "entitlements");
@@ -35,7 +36,13 @@ public record PolicyDescriptor(
     entitlements = entitlements.stream().distinct().sorted().toList();
   }
 
-  /** Creates a new policy descriptor with format version 1. */
+  /**
+   * Creates a new policy descriptor with format version 1.
+   *
+   * @param moduleName the fully qualified module name
+   * @param entitlements the granted entitlements
+   * @return the policy descriptor
+   */
   public static PolicyDescriptor create(String moduleName, List<Entitlement> entitlements) {
     return new PolicyDescriptor(FORMAT_VERSION, moduleName, entitlements);
   }

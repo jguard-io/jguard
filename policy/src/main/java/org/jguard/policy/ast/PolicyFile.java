@@ -22,6 +22,7 @@ import java.util.Objects;
 public record PolicyFile(
     List<String> moduleName, List<EntitlementDeclaration> entitlements, SourceLocation location) {
 
+  /** Compact constructor that validates and normalizes the record fields. */
   public PolicyFile {
     Objects.requireNonNull(moduleName, "moduleName");
     Objects.requireNonNull(entitlements, "entitlements");
@@ -33,7 +34,11 @@ public record PolicyFile(
     }
   }
 
-  /** Returns the module name as a dot-separated string. */
+  /**
+   * Returns the module name as a dot-separated string.
+   *
+   * @return the module name (e.g., "org.jguard.samples")
+   */
   public String moduleNameString() {
     return String.join(".", moduleName);
   }

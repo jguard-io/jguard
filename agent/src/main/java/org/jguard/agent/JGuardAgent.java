@@ -120,12 +120,20 @@ public final class JGuardAgent {
     premain(agentArgs, inst);
   }
 
-  /** Returns true if the agent is initialized and enforcing policies. */
+  /**
+   * Returns true if the agent is initialized and enforcing policies.
+   *
+   * @return true if initialized
+   */
   public static boolean isInitialized() {
     return initialized;
   }
 
-  /** Returns the current enforcement mode, or STRICT if not initialized. */
+  /**
+   * Returns the current enforcement mode, or STRICT if not initialized.
+   *
+   * @return the enforcement mode
+   */
   public static EnforcementMode getMode() {
     return config != null ? config.mode() : EnforcementMode.STRICT;
   }

@@ -27,6 +27,7 @@ public record CapabilityGrant(String name, List<CapabilityArgument> arguments)
   private static final Comparator<CapabilityGrant> COMPARATOR =
       Comparator.comparing(CapabilityGrant::name).thenComparing(CapabilityGrant::argumentsString);
 
+  /** Compact constructor that validates and normalizes the record fields. */
   public CapabilityGrant {
     Objects.requireNonNull(name, "name");
     Objects.requireNonNull(arguments, "arguments");
@@ -36,22 +37,41 @@ public record CapabilityGrant(String name, List<CapabilityArgument> arguments)
     arguments = List.copyOf(arguments);
   }
 
-  /** Creates a capability grant with no arguments. */
+  /**
+   * Creates a capability grant with no arguments.
+   *
+   * @param name the capability name
+   * @return the capability grant
+   */
   public static CapabilityGrant of(String name) {
     return new CapabilityGrant(name, List.of());
   }
 
-  /** Creates a capability grant with the specified arguments. */
+  /**
+   * Creates a capability grant with the specified arguments.
+   *
+   * @param name the capability name
+   * @param arguments the capability arguments
+   * @return the capability grant
+   */
   public static CapabilityGrant of(String name, List<CapabilityArgument> arguments) {
     return new CapabilityGrant(name, arguments);
   }
 
-  /** Returns true if this capability has arguments. */
+  /**
+   * Returns true if this capability has arguments.
+   *
+   * @return true if arguments are present
+   */
   public boolean hasArguments() {
     return !arguments.isEmpty();
   }
 
-  /** Returns the canonical string representation for serialization. */
+  /**
+   * Returns the canonical string representation for serialization.
+   *
+   * @return the canonical string
+   */
   public String toCanonicalString() {
     if (arguments.isEmpty()) {
       return name;

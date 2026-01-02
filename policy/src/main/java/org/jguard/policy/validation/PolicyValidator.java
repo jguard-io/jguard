@@ -52,6 +52,11 @@ public final class PolicyValidator {
   private final String sourcePath;
   private final List<CompilationResult.Diagnostic> diagnostics = new ArrayList<>();
 
+  /**
+   * Creates a new policy validator for the given source path.
+   *
+   * @param sourcePath the source file path for error reporting
+   */
   public PolicyValidator(String sourcePath) {
     this.sourcePath = sourcePath;
   }
@@ -268,12 +273,26 @@ public final class PolicyValidator {
     INTEGER
   }
 
-  /** Result of validation. */
+  /**
+   * Result of validation.
+   *
+   * @param diagnostics the validation diagnostics
+   */
   public record ValidationResult(List<CompilationResult.Diagnostic> diagnostics) {
+    /**
+     * Returns true if there were any validation errors.
+     *
+     * @return true if errors exist
+     */
     public boolean hasErrors() {
       return diagnostics.stream().anyMatch(d -> d.severity() == CompilationResult.Severity.ERROR);
     }
 
+    /**
+     * Returns true if validation succeeded without errors.
+     *
+     * @return true if validation was successful
+     */
     public boolean isValid() {
       return !hasErrors();
     }

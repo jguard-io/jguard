@@ -10,29 +10,63 @@ package org.jguard.policy.lexer;
 /** Token types for the jGuard policy descriptor language. */
 public enum TokenType {
   // Keywords
-  SECURITY, // 'security'
-  MODULE, // 'module'
-  ENTITLE, // 'entitle'
-  TO, // 'to'
+
+  /** The 'security' keyword. */
+  SECURITY,
+
+  /** The 'module' keyword. */
+  MODULE,
+
+  /** The 'entitle' keyword. */
+  ENTITLE,
+
+  /** The 'to' keyword. */
+  TO,
 
   // Literals
-  IDENTIFIER, // e.g., 'org', 'jguard', 'fs'
-  STRING, // e.g., "/tmp"
-  INTEGER, // e.g., 8080
+
+  /** An identifier (e.g., 'org', 'jguard', 'fs'). */
+  IDENTIFIER,
+
+  /** A string literal (e.g., "/tmp"). */
+  STRING,
+
+  /** An integer literal (e.g., 8080). */
+  INTEGER,
 
   // Punctuation
-  LBRACE, // '{'
-  RBRACE, // '}'
-  LPAREN, // '('
-  RPAREN, // ')'
-  SEMICOLON, // ';'
-  COMMA, // ','
-  DOT, // '.'
+
+  /** Left brace '{'. */
+  LBRACE,
+
+  /** Right brace '}'. */
+  RBRACE,
+
+  /** Left parenthesis '('. */
+  LPAREN,
+
+  /** Right parenthesis ')'. */
+  RPAREN,
+
+  /** Semicolon ';'. */
+  SEMICOLON,
+
+  /** Comma ','. */
+  COMMA,
+
+  /** Dot '.'. */
+  DOT,
 
   // Special patterns
-  DOT_STAR, // '.*' (direct subpackages)
-  DOT_DOT, // '..' (recursive subpackages)
+
+  /** Dot-star '.*' (direct subpackages). */
+  DOT_STAR,
+
+  /** Dot-dot '..' (recursive subpackages). */
+  DOT_DOT,
 
   // End of file
+
+  /** End of file marker. */
   EOF
 }

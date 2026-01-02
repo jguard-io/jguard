@@ -39,6 +39,11 @@ public final class FilesystemInterceptor {
 
     private PathAdvice() {}
 
+    /**
+     * Intercepts method entry to enforce fs.read policy.
+     *
+     * @param path the path being accessed
+     */
     @Advice.OnMethodEnter
     public static void onEnter(@Advice.Argument(0) Path path) {
       // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
@@ -55,6 +60,11 @@ public final class FilesystemInterceptor {
 
     private FileAdvice() {}
 
+    /**
+     * Intercepts method entry to enforce fs.read policy.
+     *
+     * @param file the file being accessed
+     */
     @Advice.OnMethodEnter
     public static void onEnter(@Advice.Argument(0) File file) {
       // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
@@ -71,6 +81,11 @@ public final class FilesystemInterceptor {
 
     private StringPathAdvice() {}
 
+    /**
+     * Intercepts method entry to enforce fs.read policy.
+     *
+     * @param path the path string being accessed
+     */
     @Advice.OnMethodEnter
     public static void onEnter(@Advice.Argument(0) String path) {
       // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
@@ -90,6 +105,11 @@ public final class FilesystemInterceptor {
 
     private WritePathAdvice() {}
 
+    /**
+     * Intercepts method entry to enforce fs.write policy.
+     *
+     * @param path the path being written
+     */
     @Advice.OnMethodEnter
     public static void onEnter(@Advice.Argument(0) Path path) {
       // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
@@ -106,6 +126,11 @@ public final class FilesystemInterceptor {
 
     private WriteFileAdvice() {}
 
+    /**
+     * Intercepts method entry to enforce fs.write policy.
+     *
+     * @param file the file being written
+     */
     @Advice.OnMethodEnter
     public static void onEnter(@Advice.Argument(0) File file) {
       // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
@@ -122,6 +147,11 @@ public final class FilesystemInterceptor {
 
     private WriteStringPathAdvice() {}
 
+    /**
+     * Intercepts method entry to enforce fs.write policy.
+     *
+     * @param path the path string being written
+     */
     @Advice.OnMethodEnter
     public static void onEnter(@Advice.Argument(0) String path) {
       // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
