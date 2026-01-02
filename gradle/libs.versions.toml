@@ -1,5 +1,6 @@
 [versions]
 spotless = "8.1.0"
+shadow = "8.3.5"
 junit = "5.11.0"
 assertj = "3.26.3"
 slf4j = "2.0.17"
@@ -34,4 +35,5 @@ bytebuddy = ["bytebuddy", "bytebuddy-agent"]
 
 [plugins]
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
 

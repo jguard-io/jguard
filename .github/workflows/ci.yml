@@ -59,6 +59,9 @@ jobs:
           # Test on JDK 22 on Linux only
           - os: ubuntu-latest
             java: 22
+          # Test on JDK 24 on Linux only
+          - os: ubuntu-latest
+            java: 24
 
     steps:
       - name: Checkout

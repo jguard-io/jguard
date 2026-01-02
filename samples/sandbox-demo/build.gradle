@@ -29,6 +29,10 @@ repositories {
 dependencies {
   implementation("org.jguard:core")
 
+  // The jguardAgent configuration is created by the plugin.
+  // For published versions, use: jguardAgent("org.jguard:agent:VERSION")
+  // For local development with composite builds, the plugin auto-detects the agent JAR.
+
   testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
   testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.11.0")
   testImplementation("org.assertj:assertj-core:3.26.3")
@@ -44,4 +48,19 @@ tasks.withType(Test).configureEach {
     events "PASSED", "FAILED", "SKIPPED"
     exceptionFormat "FULL"
   }
+}
+
+// The runWithAgent task is now provided by the org.jguard.policy plugin!
+// Usage:
+//   ./gradlew runWithAgent              - Run with agent enforcement
+//   ./gradlew runWithAgent -Pjguard.mode=audit  - Audit mode (log only)
+//   ./gradlew runWithAgent -Pjguard.skip=true   - Skip agent (same as ./gradlew run)
+//
+// For composite builds, the plugin auto-detects the agent JAR from jguard/agent/build/libs
+// Ensure the agent is built first: ./gradlew :jguard:agent:jar
+
+// Make runWithAgent depend on agent build for composite builds
+tasks.named("runWithAgent") {
+  def jguardBuild = gradle.includedBuild("jguard")
+  dependsOn(jguardBuild.task(":agent:jar"))
 }

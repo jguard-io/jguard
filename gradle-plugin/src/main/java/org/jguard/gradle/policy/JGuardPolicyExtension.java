@@ -21,8 +21,18 @@ import org.gradle.api.provider.Property;
  *     sourceFile = file("src/main/jguard/module-info.jguard")
  *     outputDir = layout.buildDirectory.dir("generated/jguard")
  *     includeJson = true
+ *     mode = "strict"  // strict, permissive, or audit
  * }
  * </pre>
+ *
+ * <p>Run with agent: {@code ./gradlew runWithAgent}
+ *
+ * <p>Properties:
+ *
+ * <ul>
+ *   <li>{@code -Pjguard.skip=true} - Skip agent enforcement
+ *   <li>{@code -Pjguard.mode=audit} - Override enforcement mode
+ * </ul>
  */
 public abstract class JGuardPolicyExtension {
 
@@ -67,4 +77,22 @@ public abstract class JGuardPolicyExtension {
    * <p>Default: {@code META-INF/jguard}
    */
   public abstract Property<String> getJarPath();
+
+  /**
+   * The enforcement mode for the agent.
+   *
+   * <p>Valid values: {@code strict}, {@code permissive}, {@code audit}
+   *
+   * <p>Default: {@code strict}
+   */
+  public abstract Property<String> getMode();
+
+  /**
+   * The log level for the agent.
+   *
+   * <p>Valid values: {@code error}, {@code warn}, {@code info}, {@code debug}, {@code trace}
+   *
+   * <p>Default: {@code info}
+   */
+  public abstract Property<String> getLogLevel();
 }

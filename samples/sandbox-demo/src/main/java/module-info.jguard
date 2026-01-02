@@ -7,8 +7,13 @@
  */
 security module org.jguard.samples.sandbox {
 
-    // Grant filesystem read access to the entire module
-    entitle module to fs.read("/tmp", "**/*");
+    // Grant filesystem read access to the project's own source directory
+    // Uses relative path (resolved from JVM working directory)
+    entitle module to fs.read("src", "**/*");
+
+    // Grant filesystem write access to build output directory
+    // Use "**" to match the directory itself and all contents
+    entitle module to fs.write("build/test-output", "**");
 
     // Grant network outbound to specific packages
     entitle org.jguard.samples.sandbox.net to network.outbound;

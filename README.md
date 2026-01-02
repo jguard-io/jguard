@@ -179,16 +179,74 @@ jGuard is designed for:
 
 ---
 
+## Getting Started
+
+### 1. Add the Gradle plugin and dependency
+
+```groovy
+plugins {
+    id "java"
+    id "application"
+    id "org.jguard.policy"
+}
+
+dependencies {
+    implementation("org.jguard:core")
+}
+```
+
+### 2. Create a policy file
+
+Create `src/main/java/module-info.jguard`:
+
+```text
+module com.example.myapp {
+    grant {
+        package com.example.myapp {
+            fs.read("src", "**/*");
+            fs.read("config", "*.properties");
+        }
+    }
+}
+```
+
+### 3. Run with enforcement
+
+```bash
+# Development - with Gradle plugin
+./gradlew runWithAgent
+
+# Audit mode - log violations without blocking
+./gradlew runWithAgent -Pjguard.mode=audit
+```
+
+### 4. Production deployment
+
+```bash
+java -javaagent:jguard-agent.jar=policy.bin \
+     -Djguard.mode=strict \
+     -jar your-app.jar
+```
+
+See [gradle-plugin/README.md](gradle-plugin/README.md) for full plugin documentation.
+
+---
+
 ## Status
 
-jGuard is under active development.
+jGuard is under active development with production-hardened filesystem enforcement.
 
-The initial focus is on:
+Completed:
 
-* a stable policy model
-* filesystem and network enforcement
-* clear failure semantics
-* strong JPMS integration
+* Stable policy model with deterministic compilation
+* Comprehensive filesystem read enforcement
+* Clear failure semantics with configurable modes
+* Strong JPMS integration with module verification
+
+In progress:
+
+* Network enforcement (`network.outbound`)
+* Additional capabilities
 
 ---
 
