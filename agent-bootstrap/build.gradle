@@ -1,0 +1,28 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+plugins {
+  id "java"
+}
+
+// This module contains classes that are injected into the bootstrap classloader.
+// It MUST NOT have any external dependencies - only JDK classes are allowed.
+
+dependencies {
+  // No dependencies - bootstrap classes can only use JDK classes
+}
+
+// Ensure the JAR is built with consistent naming for agent injection
+jar {
+  archiveBaseName.set("jguard-bootstrap")
+  manifest {
+    attributes(
+      "Implementation-Title": "jGuard Bootstrap Classes",
+      "Implementation-Version": project.version
+    )
+  }
+}

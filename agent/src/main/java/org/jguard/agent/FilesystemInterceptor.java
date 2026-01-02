@@ -1,0 +1,131 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The jGuard Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+package org.jguard.agent;
+
+import java.io.File;
+import java.nio.file.Path;
+import net.bytebuddy.asm.Advice;
+import org.jguard.bootstrap.BootstrapEnforcer;
+
+/**
+ * ByteBuddy advice for intercepting filesystem read operations.
+ *
+ * <p>This class contains static advice methods that are woven into JDK filesystem classes to
+ * enforce fs.read entitlements.
+ *
+ * <p><b>Important:</b> All advice methods MUST only reference classes from the {@code
+ * org.jguard.bootstrap} package and JDK classes. The bootstrap package is injected into the
+ * bootstrap classloader, making it visible to transformed JDK classes. Any reference to
+ * non-bootstrap classes will cause {@link NoClassDefFoundError} at runtime.
+ */
+public final class FilesystemInterceptor {
+
+  private FilesystemInterceptor() {
+    // Advice class
+  }
+
+  /**
+   * Advice for methods that take a Path parameter.
+   *
+   * <p>Applied to: Files.readString, Files.readAllBytes, Files.list, Files.walk, FileChannel.open,
+   * etc.
+   */
+  public static class PathAdvice {
+
+    private PathAdvice() {}
+
+    @Advice.OnMethodEnter
+    public static void onEnter(@Advice.Argument(0) Path path) {
+      // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
+      BootstrapEnforcer.onFileRead(path);
+    }
+  }
+
+  /**
+   * Advice for constructors/methods that take a File parameter.
+   *
+   * <p>Applied to: FileInputStream(File), RandomAccessFile(File, String), FileReader(File)
+   */
+  public static class FileAdvice {
+
+    private FileAdvice() {}
+
+    @Advice.OnMethodEnter
+    public static void onEnter(@Advice.Argument(0) File file) {
+      // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
+      BootstrapEnforcer.onFileRead(file);
+    }
+  }
+
+  /**
+   * Advice for constructors/methods that take a String path parameter.
+   *
+   * <p>Applied to: FileInputStream(String), RandomAccessFile(String, String), FileReader(String)
+   */
+  public static class StringPathAdvice {
+
+    private StringPathAdvice() {}
+
+    @Advice.OnMethodEnter
+    public static void onEnter(@Advice.Argument(0) String path) {
+      // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
+      BootstrapEnforcer.onFileRead(path);
+    }
+  }
+
+  // ========== WRITE ADVICE CLASSES ==========
+
+  /**
+   * Advice for write methods that take a Path parameter.
+   *
+   * <p>Applied to: Files.write, Files.writeString, Files.newOutputStream, Files.newBufferedWriter,
+   * Files.copy (destination), Files.move (destination), etc.
+   */
+  public static class WritePathAdvice {
+
+    private WritePathAdvice() {}
+
+    @Advice.OnMethodEnter
+    public static void onEnter(@Advice.Argument(0) Path path) {
+      // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
+      BootstrapEnforcer.onFileWrite(path);
+    }
+  }
+
+  /**
+   * Advice for write constructors/methods that take a File parameter.
+   *
+   * <p>Applied to: FileOutputStream(File), FileWriter(File)
+   */
+  public static class WriteFileAdvice {
+
+    private WriteFileAdvice() {}
+
+    @Advice.OnMethodEnter
+    public static void onEnter(@Advice.Argument(0) File file) {
+      // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
+      BootstrapEnforcer.onFileWrite(file);
+    }
+  }
+
+  /**
+   * Advice for write constructors/methods that take a String path parameter.
+   *
+   * <p>Applied to: FileOutputStream(String), FileWriter(String)
+   */
+  public static class WriteStringPathAdvice {
+
+    private WriteStringPathAdvice() {}
+
+    @Advice.OnMethodEnter
+    public static void onEnter(@Advice.Argument(0) String path) {
+      // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
+      BootstrapEnforcer.onFileWrite(path);
+    }
+  }
+}

@@ -557,6 +557,180 @@ class SerializationTest {
   }
 
   @Nested
+  class BinaryPolicyReaderTest {
+
+    @Test
+    void readsEmptyPolicy() throws IOException {
+      PolicyDescriptor original = PolicyDescriptor.create("com.example.app", List.of());
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(original);
+      PolicyDescriptor read = BinaryPolicyReader.fromBytes(bytes);
+
+      assertThat(read.moduleName()).isEqualTo("com.example.app");
+      assertThat(read.entitlements()).isEmpty();
+    }
+
+    @Test
+    void readsModuleSubject() throws IOException {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.outbound"));
+      PolicyDescriptor original = PolicyDescriptor.create("app", List.of(entitlement));
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(original);
+      PolicyDescriptor read = BinaryPolicyReader.fromBytes(bytes);
+
+      assertThat(read.entitlements()).hasSize(1);
+      assertThat(read.entitlements().get(0).subject().type()).isEqualTo(SubjectPattern.Type.MODULE);
+    }
+
+    @Test
+    void readsExactPackageSubject() throws IOException {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.exactPackage("com.example"), CapabilityGrant.of("network.outbound"));
+      PolicyDescriptor original = PolicyDescriptor.create("app", List.of(entitlement));
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(original);
+      PolicyDescriptor read = BinaryPolicyReader.fromBytes(bytes);
+
+      assertThat(read.entitlements().get(0).subject().type())
+          .isEqualTo(SubjectPattern.Type.PACKAGE_EXACT);
+      assertThat(read.entitlements().get(0).subject().packageName()).isEqualTo("com.example");
+    }
+
+    @Test
+    void readsDirectChildrenSubject() throws IOException {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.directChildren("com.example"), CapabilityGrant.of("network.outbound"));
+      PolicyDescriptor original = PolicyDescriptor.create("app", List.of(entitlement));
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(original);
+      PolicyDescriptor read = BinaryPolicyReader.fromBytes(bytes);
+
+      assertThat(read.entitlements().get(0).subject().type())
+          .isEqualTo(SubjectPattern.Type.PACKAGE_DIRECT_CHILDREN);
+    }
+
+    @Test
+    void readsRecursiveSubject() throws IOException {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.recursive("com.worker"), CapabilityGrant.of("threads.spawn"));
+      PolicyDescriptor original = PolicyDescriptor.create("app", List.of(entitlement));
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(original);
+      PolicyDescriptor read = BinaryPolicyReader.fromBytes(bytes);
+
+      assertThat(read.entitlements().get(0).subject().type())
+          .isEqualTo(SubjectPattern.Type.PACKAGE_RECURSIVE);
+    }
+
+    @Test
+    void readsCapabilityWithStringArguments() throws IOException {
+      CapabilityGrant capability =
+          CapabilityGrant.of(
+              "fs.read",
+              List.of(
+                  new CapabilityArgument.StringArg("/data"),
+                  new CapabilityArgument.StringArg("*.json")));
+      Entitlement entitlement = new Entitlement(SubjectPattern.module(), capability);
+      PolicyDescriptor original = PolicyDescriptor.create("app", List.of(entitlement));
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(original);
+      PolicyDescriptor read = BinaryPolicyReader.fromBytes(bytes);
+
+      CapabilityGrant readCap = read.entitlements().get(0).capability();
+      assertThat(readCap.name()).isEqualTo("fs.read");
+      assertThat(readCap.arguments()).hasSize(2);
+      assertThat(((CapabilityArgument.StringArg) readCap.arguments().get(0)).value())
+          .isEqualTo("/data");
+      assertThat(((CapabilityArgument.StringArg) readCap.arguments().get(1)).value())
+          .isEqualTo("*.json");
+    }
+
+    @Test
+    void readsCapabilityWithIntegerArguments() throws IOException {
+      CapabilityGrant capability =
+          CapabilityGrant.of("network.listen", List.of(new CapabilityArgument.IntegerArg(8080)));
+      Entitlement entitlement = new Entitlement(SubjectPattern.module(), capability);
+      PolicyDescriptor original = PolicyDescriptor.create("app", List.of(entitlement));
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(original);
+      PolicyDescriptor read = BinaryPolicyReader.fromBytes(bytes);
+
+      CapabilityGrant readCap = read.entitlements().get(0).capability();
+      assertThat(readCap.name()).isEqualTo("network.listen");
+      assertThat(((CapabilityArgument.IntegerArg) readCap.arguments().get(0)).value())
+          .isEqualTo(8080L);
+    }
+
+    @Test
+    void readsMultipleEntitlements() throws IOException {
+      Entitlement e1 =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.outbound"));
+      Entitlement e2 =
+          new Entitlement(
+              SubjectPattern.exactPackage("com.example"), CapabilityGrant.of("threads.spawn"));
+      Entitlement e3 =
+          new Entitlement(
+              SubjectPattern.recursive("com.worker"), CapabilityGrant.of("native.load"));
+      PolicyDescriptor original = PolicyDescriptor.create("app", List.of(e1, e2, e3));
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(original);
+      PolicyDescriptor read = BinaryPolicyReader.fromBytes(bytes);
+
+      assertThat(read.entitlements()).hasSize(3);
+    }
+
+    @Test
+    void roundTripPreservesAllData() throws IOException {
+      CapabilityGrant fsRead =
+          CapabilityGrant.of(
+              "fs.read",
+              List.of(
+                  new CapabilityArgument.StringArg("/data"),
+                  new CapabilityArgument.StringArg("*.json")));
+      CapabilityGrant listen =
+          CapabilityGrant.of("network.listen", List.of(new CapabilityArgument.IntegerArg(8080)));
+
+      Entitlement e1 = new Entitlement(SubjectPattern.module(), fsRead);
+      Entitlement e2 = new Entitlement(SubjectPattern.exactPackage("com.example.net"), listen);
+      Entitlement e3 =
+          new Entitlement(
+              SubjectPattern.recursive("com.worker"), CapabilityGrant.of("threads.spawn"));
+      PolicyDescriptor original = PolicyDescriptor.create("com.example.app", List.of(e1, e2, e3));
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(original);
+      PolicyDescriptor read = BinaryPolicyReader.fromBytes(bytes);
+
+      // Write again and compare bytes
+      byte[] bytesAgain = BinaryPolicyWriter.toBytes(read);
+      assertThat(bytesAgain).isEqualTo(bytes);
+    }
+
+    @Test
+    void rejectsInvalidMagic() {
+      byte[] invalid = {'X', 'X', 'X', 'X', 1, 0, 3, 'a', 'p', 'p', 0, 0};
+
+      org.assertj.core.api.Assertions.assertThatThrownBy(
+              () -> BinaryPolicyReader.fromBytes(invalid))
+          .isInstanceOf(IOException.class)
+          .hasMessageContaining("Invalid policy file");
+    }
+
+    @Test
+    void rejectsUnsupportedVersion() {
+      byte[] invalid = {'J', 'G', 'R', 'D', 99, 0, 3, 'a', 'p', 'p', 0, 0};
+
+      org.assertj.core.api.Assertions.assertThatThrownBy(
+              () -> BinaryPolicyReader.fromBytes(invalid))
+          .isInstanceOf(IOException.class)
+          .hasMessageContaining("Unsupported policy format version");
+    }
+  }
+
+  @Nested
   class RoundTripTest {
 
     @Test

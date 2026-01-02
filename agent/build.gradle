@@ -7,16 +7,32 @@
 //
 plugins {
   id "java"
+  alias(libs.plugins.shadow)
 }
 
 dependencies {
   implementation(project(":core"))
   implementation(project(":policy"))
+  implementation(project(":agent-bootstrap"))
   implementation(libs.bundles.bytebuddy)
-  implementation(libs.slf4j.api)
+
+  // SLF4J is optional - agent uses AgentLogger from bootstrap module for core logging
+  // but can bridge to SLF4J if available on classpath
+  compileOnly(libs.slf4j.api)
 }
 
-jar {
+// ByteBuddy's classfiles use @SuppressFBWarnings annotations from FindBugs,
+// which aren't on our classpath. This triggers -Xlint:classfile warnings.
+// Suppress only this specific warning category to maintain strict checks elsewhere.
+tasks.withType(JavaCompile).configureEach {
+  options.compilerArgs += ["-Xlint:-classfile"]
+}
+
+// The agent jar must be a fat jar with all dependencies included
+// because Java agents have limited classpath visibility
+shadowJar {
+  archiveClassifier.set("")  // Replace the default jar
+
   manifest {
     attributes(
       "Premain-Class": "org.jguard.agent.JGuardAgent",
@@ -25,5 +41,39 @@ jar {
       "Can-Retransform-Classes": "true"
     )
   }
+
+  // Relocate ByteBuddy and ASM to avoid conflicts with apps using different versions
+  relocate 'net.bytebuddy', 'org.jguard.internal.bytebuddy'
+  relocate 'org.objectweb.asm', 'org.jguard.internal.asm'
+
+  // Don't relocate bootstrap classes - they must have stable names for injection
+  // Don't relocate policy/core - they're part of our public API
+}
+
+// Inject the bootstrap JAR into the shadow JAR after it's built
+shadowJar.doLast {
+  def agentJar = archiveFile.get().asFile
+  def bootstrapJarFile = project(":agent-bootstrap").jar.archiveFile.get().asFile
+
+  // Use Java's zip filesystem to inject the bootstrap JAR
+  def zipUri = URI.create("jar:" + agentJar.toURI())
+  def env = [create: "false"]
+  java.nio.file.FileSystems.newFileSystem(zipUri, env).withCloseable { zipFs ->
+    def jguardDir = zipFs.getPath("/jguard")
+    java.nio.file.Files.createDirectories(jguardDir)
+    def targetPath = jguardDir.resolve("bootstrap.jar")
+    java.nio.file.Files.copy(bootstrapJarFile.toPath(), targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+  }
+}
+
+// Make the standard jar task produce the shadow jar
+jar {
+  dependsOn shadowJar
+  enabled = false
+}
+
+// Make assemble depend on shadowJar
+tasks.named("assemble") {
+  dependsOn shadowJar
 }
 

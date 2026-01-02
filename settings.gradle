@@ -27,13 +27,17 @@ dependencyResolutionManagement {
 }
 
 // Keep logical project names (used in dependencies) simple:
-include("gradle-plugin", "core", "policy", "policy-java", "agent", "cli")
+include("gradle-plugin", "core", "policy", "policy-java", "agent-bootstrap", "agent", "cli")
 
 // Map them to the directory names (same as included names here, but explicit is clearer)
 project(":gradle-plugin").projectDir = file("gradle-plugin")
 project(":core").projectDir = file("core")
 project(":policy").projectDir = file("policy")
 project(":policy-java").projectDir = file("policy-java")
+project(":agent-bootstrap").projectDir = file("agent-bootstrap")
 project(":agent").projectDir = file("agent")
 project(":cli").projectDir = file("cli")
+
+// Samples are separate composite builds - run with:
+// cd samples/sandbox-demo && ./gradlew run
 
