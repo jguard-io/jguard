@@ -18,6 +18,9 @@ security module org.jguard.samples.sandbox {
     // Grant network outbound to specific packages
     entitle org.jguard.samples.sandbox.net to network.outbound;
 
+    // Grant network listen to specific packages
+    entitle org.jguard.samples.sandbox.net to network.listen;
+
     // Grant thread spawning to the worker package hierarchy
     entitle org.jguard.samples.sandbox.worker.. to threads.spawn;
 

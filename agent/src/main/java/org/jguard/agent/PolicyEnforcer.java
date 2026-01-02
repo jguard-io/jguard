@@ -144,6 +144,90 @@ public final class PolicyEnforcer {
   }
 
   /**
+   * Checks if the caller is entitled to make outbound network connections.
+   *
+   * @param context the caller context containing package and module information
+   * @return null if allowed, SecurityException if denied
+   */
+  public SecurityException checkNetworkOutboundReturningException(CallerContext context) {
+    String callerPackage = context.packageName();
+    String callerModule = context.moduleName();
+
+    // First, verify module identity
+    if (!isValidModule(callerModule)) {
+      LOG.debug("Module mismatch: caller module={}, expected module={}", callerModule, moduleName);
+      return deniedModuleMismatch(callerPackage, callerModule, "network.outbound");
+    }
+
+    String cacheKey = callerPackage + ":" + callerModule + ":network.outbound";
+    Boolean cached = decisionCache.get(cacheKey);
+    if (cached != null) {
+      return cached ? null : denied(callerPackage, "network.outbound", "outbound connection");
+    }
+
+    boolean allowed = isAllowedNetworkOutbound(callerPackage);
+    decisionCache.put(cacheKey, allowed);
+
+    return allowed ? null : denied(callerPackage, "network.outbound", "outbound connection");
+  }
+
+  /**
+   * Checks if the caller is entitled to make outbound network connections. Throws if denied.
+   *
+   * @param context the caller context containing package and module information
+   * @throws SecurityException if access is denied
+   */
+  public void checkNetworkOutbound(CallerContext context) {
+    SecurityException denial = checkNetworkOutboundReturningException(context);
+    if (denial != null) {
+      throw denial;
+    }
+  }
+
+  /**
+   * Checks if the caller is entitled to listen on a server socket.
+   *
+   * @param context the caller context containing package and module information
+   * @param port the port being bound to
+   * @return null if allowed, SecurityException if denied
+   */
+  public SecurityException checkNetworkListenReturningException(CallerContext context, int port) {
+    String callerPackage = context.packageName();
+    String callerModule = context.moduleName();
+
+    // First, verify module identity
+    if (!isValidModule(callerModule)) {
+      LOG.debug("Module mismatch: caller module={}, expected module={}", callerModule, moduleName);
+      return deniedModuleMismatch(callerPackage, callerModule, "network.listen");
+    }
+
+    String cacheKey = callerPackage + ":" + callerModule + ":network.listen:" + port;
+    Boolean cached = decisionCache.get(cacheKey);
+    if (cached != null) {
+      return cached ? null : denied(callerPackage, "network.listen", "port " + port);
+    }
+
+    boolean allowed = isAllowedNetworkListen(callerPackage, port);
+    decisionCache.put(cacheKey, allowed);
+
+    return allowed ? null : denied(callerPackage, "network.listen", "port " + port);
+  }
+
+  /**
+   * Checks if the caller is entitled to listen on a server socket. Throws if denied.
+   *
+   * @param context the caller context containing package and module information
+   * @param port the port being bound to
+   * @throws SecurityException if access is denied
+   */
+  public void checkNetworkListen(CallerContext context, int port) {
+    SecurityException denial = checkNetworkListenReturningException(context, port);
+    if (denial != null) {
+      throw denial;
+    }
+  }
+
+  /**
    * Validates that the caller's module is allowed by the policy.
    *
    * <p>The policy is compiled for a specific module. We allow:
@@ -178,6 +262,63 @@ public final class PolicyEnforcer {
 
   private boolean isAllowedFsWrite(String callerPackage, Path path) {
     return isAllowedFsOperation(callerPackage, path, "fs.write");
+  }
+
+  private boolean isAllowedNetworkOutbound(String callerPackage) {
+    // Check all entitlements that apply to this caller
+    for (Entitlement entitlement : policy.entitlements()) {
+      if (!entitlement.capability().name().equals("network.outbound")) {
+        continue;
+      }
+      if (!subjectMatches(entitlement.subject(), callerPackage)) {
+        continue;
+      }
+
+      // network.outbound takes no arguments - if the subject matches, it's allowed
+      LOG.debug("network.outbound allowed: package={}, entitlement={}", callerPackage, entitlement);
+      return true;
+    }
+
+    LOG.debug("network.outbound denied: package={}", callerPackage);
+    return false;
+  }
+
+  private boolean isAllowedNetworkListen(String callerPackage, int port) {
+    // Check all entitlements that apply to this caller
+    for (Entitlement entitlement : policy.entitlements()) {
+      if (!entitlement.capability().name().equals("network.listen")) {
+        continue;
+      }
+      if (!subjectMatches(entitlement.subject(), callerPackage)) {
+        continue;
+      }
+
+      List<CapabilityArgument> args = entitlement.capability().arguments();
+      if (args.isEmpty()) {
+        // network.listen with no arguments - allows any port
+        LOG.debug(
+            "network.listen allowed (any port): package={}, port={}, entitlement={}",
+            callerPackage,
+            port,
+            entitlement);
+        return true;
+      } else if (args.size() == 1) {
+        // network.listen(port) - check specific port
+        long allowedPort = ((CapabilityArgument.IntegerArg) args.get(0)).value();
+        if (port == allowedPort || port == 0) {
+          // Port 0 means "any available port" - we allow it if they have any listen entitlement
+          LOG.debug(
+              "network.listen allowed (port match): package={}, port={}, entitlement={}",
+              callerPackage,
+              port,
+              entitlement);
+          return true;
+        }
+      }
+    }
+
+    LOG.debug("network.listen denied: package={}, port={}", callerPackage, port);
+    return false;
   }
 
   private boolean isAllowedFsOperation(String callerPackage, Path path, String capability) {
@@ -267,7 +408,10 @@ public final class PolicyEnforcer {
   private void indexFsEntitlements() {
     for (Entitlement entitlement : policy.entitlements()) {
       String capName = entitlement.capability().name();
-      if (capName.equals("fs.read") || capName.equals("fs.write")) {
+      if (capName.equals("fs.read")
+          || capName.equals("fs.write")
+          || capName.equals("network.outbound")
+          || capName.equals("network.listen")) {
         LOG.debug("Indexed {} entitlement: {}", capName, entitlement);
       }
     }

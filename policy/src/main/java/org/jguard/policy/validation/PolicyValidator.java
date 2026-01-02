@@ -42,12 +42,12 @@ public final class PolicyValidator {
   // For v0.1.0: fs.read(root, glob) and network.outbound
   private static final Map<String, CapabilitySignature> KNOWN_CAPABILITIES =
       Map.of(
-          "fs.read", new CapabilitySignature(2, List.of(ArgType.STRING, ArgType.STRING)),
-          "fs.write", new CapabilitySignature(2, List.of(ArgType.STRING, ArgType.STRING)),
-          "network.outbound", new CapabilitySignature(0, List.of()),
-          "network.listen", new CapabilitySignature(1, List.of(ArgType.INTEGER)),
-          "threads.spawn", new CapabilitySignature(0, List.of()),
-          "native.load", new CapabilitySignature(0, List.of()));
+          "fs.read", new CapabilitySignature(2, 2, List.of(ArgType.STRING, ArgType.STRING)),
+          "fs.write", new CapabilitySignature(2, 2, List.of(ArgType.STRING, ArgType.STRING)),
+          "network.outbound", new CapabilitySignature(0, 0, List.of()),
+          "network.listen", new CapabilitySignature(0, 1, List.of(ArgType.INTEGER)),
+          "threads.spawn", new CapabilitySignature(0, 0, List.of()),
+          "native.load", new CapabilitySignature(0, 0, List.of()));
 
   private final String sourcePath;
   private final List<CompilationResult.Diagnostic> diagnostics = new ArrayList<>();
@@ -136,19 +136,37 @@ public final class PolicyValidator {
     }
 
     // Check argument count
-    int expectedCount = signature.argCount();
+    int minCount = signature.minArgCount();
+    int maxCount = signature.maxArgCount();
     int actualCount = capability.arguments().size();
-    if (actualCount != expectedCount) {
-      if (expectedCount == 0) {
-        error(
-            "Capability '" + name + "' takes no arguments, but " + actualCount + " provided",
-            location);
+
+    if (actualCount < minCount || actualCount > maxCount) {
+      if (minCount == maxCount) {
+        // Fixed argument count
+        if (minCount == 0) {
+          error(
+              "Capability '" + name + "' takes no arguments, but " + actualCount + " provided",
+              location);
+        } else {
+          error(
+              "Capability '"
+                  + name
+                  + "' requires "
+                  + minCount
+                  + " argument(s), but "
+                  + actualCount
+                  + " provided",
+              location);
+        }
       } else {
+        // Variable argument count
         error(
             "Capability '"
                 + name
                 + "' requires "
-                + expectedCount
+                + minCount
+                + " to "
+                + maxCount
                 + " argument(s), but "
                 + actualCount
                 + " provided",
@@ -157,7 +175,7 @@ public final class PolicyValidator {
       return;
     }
 
-    // Check argument types
+    // Check argument types (only for provided arguments)
     List<Argument> args = capability.arguments();
     for (int i = 0; i < args.size(); i++) {
       Argument arg = args.get(i);
@@ -266,7 +284,7 @@ public final class PolicyValidator {
     return JAVA_KEYWORDS.contains(s);
   }
 
-  private record CapabilitySignature(int argCount, List<ArgType> argTypes) {}
+  private record CapabilitySignature(int minArgCount, int maxArgCount, List<ArgType> argTypes) {}
 
   private enum ArgType {
     STRING,

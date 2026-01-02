@@ -11,9 +11,13 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.jguard.core.JGuard;
+import org.jguard.samples.sandbox.net.NetworkClient;
+import org.jguard.samples.sandbox.net.NetworkServer;
 
 /**
  * Demonstrates jGuard capability-based security enforcement.
@@ -24,6 +28,9 @@ import org.jguard.core.JGuard;
  * <ul>
  *   <li>fs.read("src", "**\/*") - filesystem read access to source directory
  *   <li>fs.write("build/test-output", "**") - filesystem write access to test output directory
+ *   <li>network.outbound - outbound network connections (from org.jguard.samples.sandbox.net
+ *       package)
+ *   <li>network.listen - server socket binding (from org.jguard.samples.sandbox.net package)
  * </ul>
  *
  * <h2>Running without the agent (no enforcement):</h2>
@@ -81,6 +88,22 @@ public final class Main {
 
     // Test 8: Write to /tmp using FileOutputStream (NOT ENTITLED)
     demonstrateUnentitledFileOutputStreamAccess();
+
+    // === NETWORK TESTS ===
+    System.out.println("--- NETWORK TESTS ---");
+    System.out.println();
+
+    // Test 9: Network connection from entitled package (ENTITLED)
+    demonstrateEntitledNetworkAccess();
+
+    // Test 10: Network connection from non-entitled package (NOT ENTITLED)
+    demonstrateUnentitledNetworkAccess();
+
+    // Test 11: Server socket from entitled package (ENTITLED)
+    demonstrateEntitledNetworkListenAccess();
+
+    // Test 12: Server socket from non-entitled package (NOT ENTITLED)
+    demonstrateUnentitledNetworkListenAccess();
   }
 
   /**
@@ -283,6 +306,113 @@ public final class Main {
       System.out.println("  (This should be BLOCKED when running with the agent!)");
       // Clean up
       testFile.delete();
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (expected): " + e.getMessage());
+    } catch (IOException e) {
+      System.out.println("  ERROR: " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates network connection from entitled package.
+   *
+   * <p>This operation IS entitled because it's called from the .net package which has
+   * network.outbound entitlement.
+   */
+  private static void demonstrateEntitledNetworkAccess() {
+    System.out.println("[ENTITLED] network.outbound (from .net package)");
+    System.out.println("  Attempting to connect to localhost:80...");
+
+    try {
+      // This call is made FROM the NetworkClient class in the .net package
+      // which HAS network.outbound entitlement
+      boolean connected = NetworkClient.tryConnect("localhost", 80);
+      if (connected) {
+        System.out.println("  SUCCESS: Connected to localhost:80");
+      } else {
+        System.out.println("  SUCCESS: Connection attempt allowed (port closed or unreachable)");
+      }
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (unexpected): " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates network connection from non-entitled package.
+   *
+   * <p>This operation is NOT entitled because Main is in the sandbox package, not the .net package.
+   * It should be blocked when the agent is active.
+   */
+  private static void demonstrateUnentitledNetworkAccess() {
+    System.out.println("[NOT ENTITLED] network.outbound (from main package)");
+    System.out.println("  Attempting to connect to localhost:80 directly...");
+
+    try {
+      // This call is made FROM this class (Main) which is in the .sandbox package
+      // which does NOT have network.outbound entitlement
+      try (Socket socket = new Socket("localhost", 80)) {
+        System.out.println("  SUCCESS: Connected to localhost:80 (unexpected!)");
+        System.out.println("  (This should be BLOCKED when running with the agent!)");
+      }
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (expected): " + e.getMessage());
+    } catch (IOException e) {
+      // Connection refused or similar is expected if port is not open
+      System.out.println("  SUCCESS: Connection attempt allowed (port closed or unreachable)");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates server socket binding from entitled package.
+   *
+   * <p>This operation IS entitled because it's called from the .net package which has network.listen
+   * entitlement.
+   */
+  private static void demonstrateEntitledNetworkListenAccess() {
+    System.out.println("[ENTITLED] network.listen (from .net package)");
+    System.out.println("  Attempting to bind ServerSocket to port 0 (any available)...");
+
+    try {
+      // This call is made FROM the NetworkServer class in the .net package
+      // which HAS network.listen entitlement
+      int boundPort = NetworkServer.tryListen(0);
+      if (boundPort > 0) {
+        System.out.println("  SUCCESS: Bound to port " + boundPort);
+      } else {
+        System.out.println("  FAILED: Could not bind to any port (unexpected)");
+      }
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (unexpected): " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates server socket binding from non-entitled package.
+   *
+   * <p>This operation is NOT entitled because Main is in the sandbox package, not the .net package.
+   * It should be blocked when the agent is active.
+   */
+  private static void demonstrateUnentitledNetworkListenAccess() {
+    System.out.println("[NOT ENTITLED] network.listen (from main package)");
+    System.out.println("  Attempting to bind ServerSocket to port 0 directly...");
+
+    try {
+      // This call is made FROM this class (Main) which is in the .sandbox package
+      // which does NOT have network.listen entitlement
+      try (ServerSocket serverSocket = new ServerSocket(0)) {
+        int port = serverSocket.getLocalPort();
+        System.out.println("  SUCCESS: Bound to port " + port + " (unexpected!)");
+        System.out.println("  (This should be BLOCKED when running with the agent!)");
+      }
     } catch (SecurityException e) {
       System.out.println("  BLOCKED (expected): " + e.getMessage());
     } catch (IOException e) {
