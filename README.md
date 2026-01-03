@@ -223,13 +223,23 @@ module com.example.myapp {
 
 ### 4. Production deployment
 
+For production, use an external policy file so administrators can update entitlements without rebuilding:
+
 ```bash
-java -javaagent:jguard-agent.jar=policy.bin \
+# Compile policy separately
+jguard compile module-info.jguard -o /etc/myapp/policy.bin
+
+# Run with external policy
+java -javaagent:jguard-agent.jar=/etc/myapp/policy.bin \
      -Djguard.mode=strict \
      -jar your-app.jar
+
+# Update entitlements without rebuild (restart required)
+jguard compile updated-policy.jguard -o /etc/myapp/policy.bin
+systemctl restart myapp
 ```
 
-See [gradle-plugin/README.md](gradle-plugin/README.md) for full plugin documentation.
+See [agent/README.md](agent/README.md) for full agent documentation and [gradle-plugin/README.md](gradle-plugin/README.md) for build integration.
 
 ---
 

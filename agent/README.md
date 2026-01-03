@@ -37,6 +37,27 @@ This separation is necessary because advice woven into JDK classes can only refe
 -javaagent:jguard-agent.jar=/path/to/policy.bin
 ```
 
+### External Policy Files (Recommended for Production)
+
+For production deployments, keep policy files external to the application JAR. This allows administrators to update entitlements without rebuilding the application:
+
+```bash
+# 1. Compile policy separately
+jguard compile src/main/java/module-info.jguard -o /etc/myapp/policy.bin
+
+# 2. Run application with external policy
+java -javaagent:jguard-agent.jar=/etc/myapp/policy.bin -jar myapp.jar
+
+# 3. Update entitlements (requires restart, no rebuild)
+jguard compile updated-policy.jguard -o /etc/myapp/policy.bin
+systemctl restart myapp
+```
+
+This separation enables:
+- **Security team** manages policy files independently
+- **Dev team** ships application without embedded policies
+- **Ops team** updates entitlements without rebuilding artifacts
+
 ### System Properties
 
 | Property | Values | Default | Description |
