@@ -35,6 +35,8 @@ PolicyEnforcer.check()  ← category-based dispatch
 | `Operation` | agent-bootstrap | Enum with capability name and category |
 | `Operation.Category` | agent-bootstrap | Determines matching logic (SIMPLE, PORT, etc.) |
 | `BootstrapEnforcer` | agent-bootstrap | Entry points called by advice |
+| `JGuardAgent` | agent | Agent entry point (injects bootstrap, delegates to AgentInitializer) |
+| `AgentInitializer` | agent | Agent initialization (policy loading, instrumentation wiring) |
 | `PolicyEnforcer` | agent | Category-based policy evaluation |
 | `*Interceptor` | agent | ByteBuddy advice classes |
 
@@ -106,9 +108,9 @@ public final class ThreadInterceptor {
 }
 ```
 
-#### Step 4: Wire Advice in JGuardAgent (~5 lines)
+#### Step 4: Wire Advice in AgentInitializer (~5 lines)
 
-**File:** `agent/src/main/java/org/jguard/agent/JGuardAgent.java`
+**File:** `agent/src/main/java/org/jguard/agent/AgentInitializer.java`
 
 ```java
 // Thread.start() instrumentation
