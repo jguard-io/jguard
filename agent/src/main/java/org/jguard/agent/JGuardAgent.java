@@ -7,36 +7,25 @@
  */
 package org.jguard.agent;
 
-import static net.bytebuddy.matcher.ElementMatchers.isConstructor;
-import static net.bytebuddy.matcher.ElementMatchers.named;
-import static net.bytebuddy.matcher.ElementMatchers.none;
-import static net.bytebuddy.matcher.ElementMatchers.takesArgument;
-import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.jar.JarFile;
-import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.asm.Advice;
-import net.bytebuddy.description.type.TypeDescription;
-import net.bytebuddy.dynamic.DynamicType;
-import net.bytebuddy.utility.JavaModule;
-import org.jguard.bootstrap.AgentConfig;
-import org.jguard.bootstrap.AgentLogger;
-import org.jguard.bootstrap.EnforcementMode;
-import org.jguard.policy.model.PolicyDescriptor;
-import org.jguard.policy.serialization.BinaryPolicyReader;
 
 /**
  * jGuard Java agent entry point.
  *
  * <p>This agent enforces capability-based security policies by instrumenting JDK classes to check
  * entitlements before sensitive operations.
+ *
+ * <p><b>IMPORTANT:</b> This class must NOT import any types from org.jguard.bootstrap.* because
+ * those types are not available until after bootstrap injection. All bootstrap-dependent logic is
+ * in {@link AgentInitializer}, which is loaded via reflection after injection.
  *
  * <h2>Usage</h2>
  *
@@ -57,17 +46,24 @@ import org.jguard.policy.serialization.BinaryPolicyReader;
  *   <li>{@code jguard.log.denied} - Log denied operations (default: true)
  *   <li>{@code jguard.log.allowed} - Log allowed operations (default: false)
  * </ul>
+ *
+ * <h2>Two-Phase Initialization</h2>
+ *
+ * <p>The agent uses two-phase initialization to solve the classloader chicken-and-egg problem:
+ *
+ * <ol>
+ *   <li>JGuardAgent.premain() injects bootstrap.jar into the bootstrap classloader
+ *   <li>AgentInitializer.initialize() is called via reflection (can now use bootstrap types)
+ * </ol>
+ *
+ * <p>This separation is necessary because JVM class loading resolves all imported types when a
+ * class is loaded. If JGuardAgent imported bootstrap types directly, the JVM would try to resolve
+ * them before premain() runs, causing NoClassDefFoundError.
  */
 public final class JGuardAgent {
 
-  private static final AgentLogger LOG = AgentLogger.getLogger(JGuardAgent.class);
-
   /** Resource path for the embedded bootstrap JAR. */
   private static final String BOOTSTRAP_JAR_RESOURCE = "/jguard/bootstrap.jar";
-
-  private static volatile PolicyEnforcer enforcer;
-  private static volatile AgentConfig config;
-  private static volatile boolean initialized;
 
   private JGuardAgent() {
     // Entry point class
@@ -81,33 +77,24 @@ public final class JGuardAgent {
    */
   public static void premain(String agentArgs, Instrumentation inst) {
     try {
-      // Parse configuration first to set up logging
-      config = AgentConfig.fromSystemProperties(agentArgs);
-      AgentLogger.setLevel(config.logLevel());
-
-      LOG.info("jGuard agent starting (mode={})", config.mode());
-
-      // Inject bootstrap classes FIRST - before any other operations
+      // Phase 1: Inject bootstrap classes FIRST - before anything that uses them
       injectBootstrapClasses(inst);
 
-      // Load policy
-      PolicyDescriptor policy = loadPolicy(config.policyPath());
-      enforcer = new PolicyEnforcer(policy, config);
-
-      // Configure the bootstrap enforcer
-      configureBootstrapEnforcer();
-
-      // Install instrumentation
-      installInstrumentation(inst);
-
-      initialized = true;
-      LOG.info(
-          "jGuard agent initialized successfully for module: {} (mode={})",
-          policy.moduleName(),
-          config.mode());
+      // Phase 2: Call AgentInitializer via reflection (it can now use bootstrap types)
+      initializeAgent(agentArgs, inst);
 
     } catch (Exception e) {
-      handleInitializationError(e);
+      // Can't use AgentLogger here - bootstrap may not be loaded
+      System.err.println("[jGuard] FATAL: Agent initialization failed: " + e.getMessage());
+      e.printStackTrace(System.err);
+
+      // Check if we should fail hard or continue
+      String mode = System.getProperty("jguard.mode", "strict");
+      if ("strict".equalsIgnoreCase(mode)) {
+        throw new RuntimeException("jGuard agent initialization failed", e);
+      } else {
+        System.err.println("[jGuard] Continuing without enforcement (mode=" + mode + ")");
+      }
     }
   }
 
@@ -122,57 +109,18 @@ public final class JGuardAgent {
   }
 
   /**
-   * Returns true if the agent is initialized and enforcing policies.
-   *
-   * @return true if initialized
-   */
-  public static boolean isInitialized() {
-    return initialized;
-  }
-
-  /**
-   * Returns the current enforcement mode, or STRICT if not initialized.
-   *
-   * @return the enforcement mode
-   */
-  public static EnforcementMode getMode() {
-    return config != null ? config.mode() : EnforcementMode.STRICT;
-  }
-
-  private static PolicyDescriptor loadPolicy(Path path) throws IOException {
-    if (!Files.exists(path)) {
-      throw new IOException("Policy file not found: " + path);
-    }
-    LOG.info("Loading policy from: {}", path);
-    return BinaryPolicyReader.fromFile(path);
-  }
-
-  /**
    * Injects bootstrap classes into the bootstrap classloader.
    *
    * <p>This uses the production-grade approach: extract the embedded bootstrap JAR and use {@link
    * Instrumentation#appendToBootstrapClassLoaderSearch(JarFile)} to add it to the bootstrap
    * classpath.
-   *
-   * <p>This is more robust than the temp-directory class injection approach because:
-   *
-   * <ul>
-   *   <li>The JAR is a proper artifact that can be verified
-   *   <li>All classes are loaded atomically from the JAR
-   *   <li>No need to manually inject individual class files
-   *   <li>The Instrumentation API handles all edge cases
-   * </ul>
    */
   private static void injectBootstrapClasses(Instrumentation inst) throws IOException {
-    LOG.debug("Injecting bootstrap classes...");
-
     // Extract embedded bootstrap JAR to temp file
     File bootstrapJar = extractBootstrapJar();
 
     // Add to bootstrap classloader search path
     inst.appendToBootstrapClassLoaderSearch(new JarFile(bootstrapJar));
-
-    LOG.debug("Bootstrap classes injected successfully from: {}", bootstrapJar);
   }
 
   /**
@@ -198,387 +146,24 @@ public final class JGuardAgent {
       // Copy resource to temp file
       Files.copy(is, tempJar, StandardCopyOption.REPLACE_EXISTING);
 
-      LOG.trace("Extracted bootstrap JAR to: {}", tempJar);
       return tempFile;
     }
   }
 
   /**
-   * Configures the bootstrap enforcer with the single callback and settings.
+   * Initializes the agent via reflection.
    *
-   * <p>We use Proxy to bridge the classloader gap: bootstrap and app classloaders have separate
-   * copies of CallerContext/Operation/EnforcementCallback. A direct lambda would fail with
-   * LinkageError due to type identity mismatch.
+   * <p>This method uses reflection to call AgentInitializer.initialize() because:
    *
-   * <p>Future: fix packaging so agent uses compileOnly for bootstrap types, enabling direct lambdas
-   * with single type identity at runtime.
+   * <ul>
+   *   <li>AgentInitializer imports bootstrap types
+   *   <li>Those types are now available (after injectBootstrapClasses)
+   *   <li>Using reflection defers class loading until this method runs
+   * </ul>
    */
-  private static void configureBootstrapEnforcer() {
-    try {
-      // Bootstrap-loaded types
-      Class<?> enforcerClass = Class.forName("org.jguard.bootstrap.BootstrapEnforcer", true, null);
-      Class<?> modeClass = Class.forName("org.jguard.bootstrap.EnforcementMode", true, null);
-      Class<?> callbackClass =
-          Class.forName("org.jguard.bootstrap.EnforcementCallback", true, null);
-      Class<?> callerContextClass = Class.forName("org.jguard.bootstrap.CallerContext", true, null);
-
-      // Cache reflection for bootstrap CallerContext accessors (hot path uses these)
-      java.lang.reflect.Method getPackage = callerContextClass.getMethod("packageName");
-      java.lang.reflect.Method getModule = callerContextClass.getMethod("moduleName");
-
-      // Create proxy implementing bootstrap EnforcementCallback
-      Object callbackProxy =
-          java.lang.reflect.Proxy.newProxyInstance(
-              null, // bootstrap loader
-              new Class<?>[] {callbackClass},
-              (proxy, method, args) -> {
-                // Handle Object methods
-                String name = method.getName();
-                if (name.equals("toString")) return "JGuardEnforcementCallbackProxy";
-                if (name.equals("hashCode")) return System.identityHashCode(proxy);
-                if (name.equals("equals")) return proxy == args[0];
-
-                if (!name.equals("check")) {
-                  return null;
-                }
-
-                // Signature: check(CallerContext caller, Operation op, Object arg0, int arg1)
-                Object bootstrapCaller = args[0];
-                Object bootstrapOp = args[1];
-                Object arg0 = args[2];
-                int arg1 = (Integer) args[3];
-
-                // Convert bootstrap CallerContext -> agent-visible CallerContext
-                String pkg = (String) getPackage.invoke(bootstrapCaller);
-                String mod = (String) getModule.invoke(bootstrapCaller);
-                org.jguard.bootstrap.CallerContext agentCaller =
-                    new org.jguard.bootstrap.CallerContext(pkg, mod);
-
-                // Convert bootstrap Operation -> agent Operation by name
-                String opName = ((Enum<?>) bootstrapOp).name();
-                org.jguard.bootstrap.Operation agentOp =
-                    org.jguard.bootstrap.Operation.valueOf(opName);
-
-                // Single dispatch to PolicyEnforcer.check()
-                return enforcer.check(agentCaller, agentOp, arg0, arg1);
-              });
-
-      // Register callback reflectively on bootstrap BootstrapEnforcer
-      java.lang.reflect.Method setCallback = enforcerClass.getMethod("setCallback", callbackClass);
-      setCallback.invoke(null, callbackProxy);
-
-      // Set mode (bootstrap enum identity)
-      java.lang.reflect.Method setMode = enforcerClass.getMethod("setMode", modeClass);
-      Object bootstrapMode = getEnumConstant(modeClass, config.mode().name());
-      setMode.invoke(null, bootstrapMode);
-
-      // Logging flags
-      java.lang.reflect.Method setLogging =
-          enforcerClass.getMethod("setLogging", boolean.class, boolean.class);
-      setLogging.invoke(null, config.logDenied(), config.logAllowed());
-
-      LOG.debug("Bootstrap enforcer configured successfully");
-
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to configure bootstrap enforcer", e);
-    }
-  }
-
-  private static void installInstrumentation(Instrumentation inst) {
-    LOG.debug("Installing instrumentation...");
-
-    // Check if retransformation is supported
-    if (!inst.isRetransformClassesSupported()) {
-      LOG.warn("Retransformation not supported - network instrumentation may not work");
-    }
-
-    new AgentBuilder.Default()
-        .disableClassFormatChanges()
-        .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
-        .with(AgentBuilder.RedefinitionStrategy.DiscoveryStrategy.Reiterating.INSTANCE)
-        .with(AgentBuilder.TypeStrategy.Default.REDEFINE)
-        .with(new LoggingListener())
-        .ignore(none())
-        // Instrument java.nio.file.Files - the primary NIO filesystem API
-        .type(named("java.nio.file.Files"))
-        .transform(
-            (builder, typeDescription, classLoader, module, protectionDomain) ->
-                builder
-                    .visit(
-                        Advice.to(FilesystemInterceptor.PathAdvice.class)
-                            .on(named("newInputStream").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.PathAdvice.class)
-                            .on(named("newBufferedReader").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.PathAdvice.class)
-                            .on(named("readAllBytes").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.PathAdvice.class)
-                            .on(named("readAllLines").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.PathAdvice.class)
-                            .on(named("readString").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.PathAdvice.class)
-                            .on(named("lines").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.PathAdvice.class)
-                            .on(named("list").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.PathAdvice.class)
-                            .on(named("walk").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.PathAdvice.class)
-                            .on(named("find").and(takesArgument(0, Path.class))))
-                    // Write operations
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WritePathAdvice.class)
-                            .on(named("write").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WritePathAdvice.class)
-                            .on(named("writeString").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WritePathAdvice.class)
-                            .on(named("newOutputStream").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WritePathAdvice.class)
-                            .on(named("newBufferedWriter").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WritePathAdvice.class)
-                            .on(named("createFile").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WritePathAdvice.class)
-                            .on(named("createDirectory").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WritePathAdvice.class)
-                            .on(named("createDirectories").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WritePathAdvice.class)
-                            .on(named("delete").and(takesArgument(0, Path.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WritePathAdvice.class)
-                            .on(named("deleteIfExists").and(takesArgument(0, Path.class)))))
-        // Instrument java.io.FileInputStream - legacy IO API
-        .type(named("java.io.FileInputStream"))
-        .transform(
-            (builder, typeDescription, classLoader, module, protectionDomain) ->
-                builder
-                    .visit(
-                        Advice.to(FilesystemInterceptor.FileAdvice.class)
-                            .on(isConstructor().and(takesArgument(0, File.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.StringPathAdvice.class)
-                            .on(isConstructor().and(takesArgument(0, String.class)))))
-        // Instrument java.io.RandomAccessFile - direct file access
-        .type(named("java.io.RandomAccessFile"))
-        .transform(
-            (builder, typeDescription, classLoader, module, protectionDomain) ->
-                builder
-                    .visit(
-                        Advice.to(FilesystemInterceptor.FileAdvice.class)
-                            .on(isConstructor().and(takesArgument(0, File.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.StringPathAdvice.class)
-                            .on(isConstructor().and(takesArgument(0, String.class)))))
-        // Instrument java.io.FileReader - character stream API
-        .type(named("java.io.FileReader"))
-        .transform(
-            (builder, typeDescription, classLoader, module, protectionDomain) ->
-                builder
-                    .visit(
-                        Advice.to(FilesystemInterceptor.FileAdvice.class)
-                            .on(isConstructor().and(takesArgument(0, File.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.StringPathAdvice.class)
-                            .on(isConstructor().and(takesArgument(0, String.class)))))
-        // Instrument java.nio.channels.FileChannel - NIO channel API
-        .type(named("java.nio.channels.FileChannel"))
-        .transform(
-            (builder, typeDescription, classLoader, module, protectionDomain) ->
-                builder.visit(
-                    Advice.to(FilesystemInterceptor.PathAdvice.class)
-                        .on(named("open").and(takesArgument(0, Path.class)))))
-        // Instrument java.io.FileOutputStream - legacy IO write API
-        .type(named("java.io.FileOutputStream"))
-        .transform(
-            (builder, typeDescription, classLoader, module, protectionDomain) ->
-                builder
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WriteFileAdvice.class)
-                            .on(isConstructor().and(takesArgument(0, File.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WriteStringPathAdvice.class)
-                            .on(isConstructor().and(takesArgument(0, String.class)))))
-        // Instrument java.io.FileWriter - character stream write API
-        .type(named("java.io.FileWriter"))
-        .transform(
-            (builder, typeDescription, classLoader, module, protectionDomain) ->
-                builder
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WriteFileAdvice.class)
-                            .on(isConstructor().and(takesArgument(0, File.class))))
-                    .visit(
-                        Advice.to(FilesystemInterceptor.WriteStringPathAdvice.class)
-                            .on(isConstructor().and(takesArgument(0, String.class)))))
-        // ========== NETWORK INSTRUMENTATION ==========
-        // Instrument java.net.Socket - the primary TCP socket API
-        .type(named("java.net.Socket"))
-        .transform(
-            (builder, typeDescription, classLoader, module, protectionDomain) ->
-                builder
-                    // Socket(String host, int port)
-                    .visit(
-                        Advice.to(NetworkInterceptor.SocketHostPortAdvice.class)
-                            .on(
-                                isConstructor()
-                                    .and(takesArgument(0, String.class))
-                                    .and(takesArgument(1, int.class))
-                                    .and(takesArguments(2))))
-                    // Socket(InetAddress address, int port)
-                    .visit(
-                        Advice.to(NetworkInterceptor.SocketInetAddressPortAdvice.class)
-                            .on(
-                                isConstructor()
-                                    .and(takesArgument(0, java.net.InetAddress.class))
-                                    .and(takesArgument(1, int.class))
-                                    .and(takesArguments(2))))
-                    // Socket.connect(SocketAddress, int timeout)
-                    .visit(
-                        Advice.to(NetworkInterceptor.SocketConnectAdvice.class)
-                            .on(
-                                named("connect")
-                                    .and(takesArgument(0, java.net.SocketAddress.class)))))
-        // Instrument java.nio.channels.SocketChannel - NIO socket API
-        .type(named("java.nio.channels.SocketChannel"))
-        .transform(
-            (builder, typeDescription, classLoader, module, protectionDomain) ->
-                builder.visit(
-                    Advice.to(NetworkInterceptor.SocketChannelConnectAdvice.class)
-                        .on(named("connect").and(takesArgument(0, java.net.SocketAddress.class)))))
-        // ========== SERVER SOCKET INSTRUMENTATION (network.listen) ==========
-        // Instrument java.net.ServerSocket - the primary server socket API
-        .type(named("java.net.ServerSocket"))
-        .transform(
-            (builder, typeDescription, classLoader, module, protectionDomain) ->
-                builder
-                    // ServerSocket(int port)
-                    .visit(
-                        Advice.to(NetworkInterceptor.ServerSocketPortAdvice.class)
-                            .on(
-                                isConstructor()
-                                    .and(takesArgument(0, int.class))
-                                    .and(takesArguments(1))))
-                    // ServerSocket(int port, int backlog)
-                    .visit(
-                        Advice.to(NetworkInterceptor.ServerSocketPortAdvice.class)
-                            .on(
-                                isConstructor()
-                                    .and(takesArgument(0, int.class))
-                                    .and(takesArgument(1, int.class))
-                                    .and(takesArguments(2))))
-                    // ServerSocket(int port, int backlog, InetAddress bindAddr)
-                    .visit(
-                        Advice.to(NetworkInterceptor.ServerSocketPortAdvice.class)
-                            .on(
-                                isConstructor()
-                                    .and(takesArgument(0, int.class))
-                                    .and(takesArgument(1, int.class))
-                                    .and(takesArgument(2, java.net.InetAddress.class))))
-                    // ServerSocket.bind(SocketAddress)
-                    .visit(
-                        Advice.to(NetworkInterceptor.ServerSocketBindAdvice.class)
-                            .on(named("bind").and(takesArgument(0, java.net.SocketAddress.class)))))
-        // Instrument java.nio.channels.ServerSocketChannel - NIO server socket API
-        .type(named("java.nio.channels.ServerSocketChannel"))
-        .transform(
-            (builder, typeDescription, classLoader, module, protectionDomain) ->
-                builder.visit(
-                    Advice.to(NetworkInterceptor.ServerSocketChannelBindAdvice.class)
-                        .on(named("bind").and(takesArgument(0, java.net.SocketAddress.class)))))
-        .installOn(inst);
-
-    LOG.debug("Instrumentation installed");
-  }
-
-  /**
-   * Gets an enum constant by name from a class loaded in a different classloader.
-   *
-   * <p>This avoids unchecked warnings from using Enum.valueOf with dynamic class types.
-   */
-  @SuppressWarnings("unchecked")
-  private static <T extends Enum<T>> T getEnumConstant(Class<?> enumClass, String name) {
-    return Enum.valueOf((Class<T>) enumClass, name);
-  }
-
-  private static void handleInitializationError(Exception e) {
-    LOG.error("Failed to initialize jGuard agent", e);
-
-    // In STRICT mode (or if we couldn't parse config), fail hard
-    if (config == null || config.mode() == EnforcementMode.STRICT) {
-      throw new RuntimeException("jGuard agent initialization failed", e);
-    }
-
-    // In PERMISSIVE or AUDIT mode, log and continue without enforcement
-    LOG.warn(
-        "jGuard agent failed to initialize but continuing without enforcement (mode={})",
-        config.mode());
-  }
-
-  /** Listener for ByteBuddy transformation events. */
-  private static class LoggingListener implements AgentBuilder.Listener {
-
-    @Override
-    public void onDiscovery(
-        String typeName, ClassLoader classLoader, JavaModule module, boolean loaded) {
-      // Log discovery of classes we're interested in
-      if (typeName.contains("Socket")
-          || typeName.contains("ServerSocket")
-          || typeName.contains("Files")) {
-        LOG.debug("Discovered: {} (loaded={})", typeName, loaded);
-      }
-    }
-
-    @Override
-    public void onTransformation(
-        TypeDescription typeDescription,
-        ClassLoader classLoader,
-        JavaModule module,
-        boolean loaded,
-        DynamicType dynamicType) {
-      LOG.info("Transformed: {} (loaded={})", typeDescription.getName(), loaded);
-    }
-
-    @Override
-    public void onIgnored(
-        TypeDescription typeDescription,
-        ClassLoader classLoader,
-        JavaModule module,
-        boolean loaded) {
-      // Log ignored classes we're interested in
-      String name = typeDescription.getName();
-      if (name.contains("Socket") || name.equals("java.nio.file.Files")) {
-        LOG.debug("Ignored: {} (loaded={})", name, loaded);
-      }
-    }
-
-    @Override
-    public void onError(
-        String typeName,
-        ClassLoader classLoader,
-        JavaModule module,
-        boolean loaded,
-        Throwable throwable) {
-      LOG.error("Error transforming: {} - {}", typeName, throwable.getMessage());
-      if (typeName.contains("Socket")) {
-        LOG.error("Socket transformation error details:", throwable);
-      }
-    }
-
-    @Override
-    public void onComplete(
-        String typeName, ClassLoader classLoader, JavaModule module, boolean loaded) {
-      // Not logged to avoid noise
-    }
+  private static void initializeAgent(String agentArgs, Instrumentation inst) throws Exception {
+    Class<?> initClass = Class.forName("org.jguard.agent.AgentInitializer");
+    Method initMethod = initClass.getMethod("initialize", String.class, Instrumentation.class);
+    initMethod.invoke(null, agentArgs, inst);
   }
 }

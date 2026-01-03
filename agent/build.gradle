@@ -13,8 +13,15 @@ plugins {
 dependencies {
   implementation(project(":core"))
   implementation(project(":policy"))
-  implementation(project(":agent-bootstrap"))
   implementation(libs.bundles.bytebuddy)
+
+  // Bootstrap classes are compile-only: they're loaded from the embedded bootstrap.jar
+  // at runtime via appendToBootstrapClassLoaderSearch(). This ensures single type identity
+  // between JDK-instrumented code and agent code, avoiding Proxy overhead.
+  compileOnly(project(":agent-bootstrap"))
+
+  // Tests need bootstrap classes on the classpath
+  testImplementation(project(":agent-bootstrap"))
 
   // SLF4J is optional - agent uses AgentLogger from bootstrap module for core logging
   // but can bridge to SLF4J if available on classpath
@@ -31,6 +38,8 @@ tasks.withType(JavaCompile).configureEach {
 // The agent jar must be a fat jar with all dependencies included
 // because Java agents have limited classpath visibility
 shadowJar {
+  // Ensure bootstrap JAR is built before we try to embed it
+  dependsOn project(":agent-bootstrap").tasks.named("jar")
   archiveClassifier.set("")  // Replace the default jar
 
   manifest {
@@ -46,8 +55,9 @@ shadowJar {
   relocate 'net.bytebuddy', 'org.jguard.internal.bytebuddy'
   relocate 'org.objectweb.asm', 'org.jguard.internal.asm'
 
-  // Don't relocate bootstrap classes - they must have stable names for injection
-  // Don't relocate policy/core - they're part of our public API
+  // CRITICAL: Exclude bootstrap classes from the shaded jar.
+  // They must only exist in the embedded bootstrap.jar to ensure single type identity.
+  exclude 'org/jguard/bootstrap/**'
 }
 
 // Inject the bootstrap JAR into the shadow JAR after it's built
@@ -63,6 +73,23 @@ shadowJar.doLast {
     java.nio.file.Files.createDirectories(jguardDir)
     def targetPath = jguardDir.resolve("bootstrap.jar")
     java.nio.file.Files.copy(bootstrapJarFile.toPath(), targetPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+  }
+
+  // Validate: bootstrap classes must NOT be in the agent jar (except embedded bootstrap.jar)
+  def hasBootstrapClasses = zipTree(agentJar).matching {
+    include 'org/jguard/bootstrap/**'
+  }.files.size() > 0
+  if (hasBootstrapClasses) {
+    throw new GradleException("BUG: agent jar contains org/jguard/bootstrap/** classes. " +
+        "They must only exist in the embedded bootstrap.jar for correct classloader identity.")
+  }
+
+  // Validate: embedded bootstrap.jar must exist
+  def hasEmbeddedBootstrap = zipTree(agentJar).matching {
+    include 'jguard/bootstrap.jar'
+  }.files.size() > 0
+  if (!hasEmbeddedBootstrap) {
+    throw new GradleException("BUG: agent jar is missing embedded jguard/bootstrap.jar")
   }
 }
 
