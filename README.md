@@ -126,11 +126,12 @@ Capabilities represent explicit permission to perform sensitive operations.
 
 Examples include:
 
-* `fs.read(root, glob)`
-* `fs.write(root, glob)`
-* `network.outbound`
-* `threads.create`
-* `native.load`
+* `fs.read(root, glob)` — read files matching glob pattern under root
+* `fs.write(root, glob)` — write files matching glob pattern under root
+* `network.outbound` — open outbound network connections
+* `network.listen` — bind server sockets to ports
+* `threads.create` — create new threads (planned)
+* `native.load` — load native libraries (planned)
 
 Capabilities are intentionally narrow and composable.
 
@@ -234,19 +235,21 @@ See [gradle-plugin/README.md](gradle-plugin/README.md) for full plugin documenta
 
 ## Status
 
-jGuard is under active development with production-hardened filesystem enforcement.
+jGuard is under active development with production-hardened enforcement.
 
 Completed:
 
 * Stable policy model with deterministic compilation
-* Comprehensive filesystem read enforcement
-* Clear failure semantics with configurable modes
+* Comprehensive filesystem enforcement (`fs.read`, `fs.write`)
+* Network enforcement (`network.outbound`, `network.listen`)
+* Clear failure semantics with configurable modes (STRICT, PERMISSIVE, AUDIT)
 * Strong JPMS integration with module verification
+* Single dispatch architecture for efficient capability checking
 
 In progress:
 
-* Network enforcement (`network.outbound`)
-* Additional capabilities
+* Thread management capabilities (`threads.create`)
+* Native library loading (`native.load`)
 
 ---
 

@@ -204,130 +204,75 @@ public final class JGuardAgent {
   }
 
   /**
-   * Configures the bootstrap enforcer with the callback and settings.
+   * Configures the bootstrap enforcer with the single callback and settings.
    *
-   * <p>We must use reflection because:
+   * <p>We use Proxy to bridge the classloader gap: bootstrap and app classloaders have separate
+   * copies of CallerContext/Operation/EnforcementCallback. A direct lambda would fail with
+   * LinkageError due to type identity mismatch.
    *
-   * <ul>
-   *   <li>BootstrapEnforcer was loaded by the bootstrap classloader
-   *   <li>The class visible to us is from the agent classloader
-   *   <li>These are different Class objects with separate static fields
-   * </ul>
+   * <p>Future: fix packaging so agent uses compileOnly for bootstrap types, enabling direct lambdas
+   * with single type identity at runtime.
    */
   private static void configureBootstrapEnforcer() {
     try {
-      // Load BootstrapEnforcer from bootstrap classloader
+      // Bootstrap-loaded types
       Class<?> enforcerClass = Class.forName("org.jguard.bootstrap.BootstrapEnforcer", true, null);
-
-      // Load EnforcementMode from bootstrap classloader
       Class<?> modeClass = Class.forName("org.jguard.bootstrap.EnforcementMode", true, null);
+      Class<?> callbackClass =
+          Class.forName("org.jguard.bootstrap.EnforcementCallback", true, null);
+      Class<?> callerContextClass = Class.forName("org.jguard.bootstrap.CallerContext", true, null);
 
-      // Get CallerContext class from bootstrap classloader
-      Class<?> callerContextClass =
-          Class.forName("org.jguard.bootstrap.BootstrapEnforcer$CallerContext", true, null);
+      // Cache reflection for bootstrap CallerContext accessors (hot path uses these)
+      java.lang.reflect.Method getPackage = callerContextClass.getMethod("packageName");
+      java.lang.reflect.Method getModule = callerContextClass.getMethod("moduleName");
 
-      // Set the enforcement callback
-      java.lang.reflect.Method setCallback =
-          enforcerClass.getMethod("setFsReadCallback", java.util.function.BiFunction.class);
+      // Create proxy implementing bootstrap EnforcementCallback
+      Object callbackProxy =
+          java.lang.reflect.Proxy.newProxyInstance(
+              null, // bootstrap loader
+              new Class<?>[] {callbackClass},
+              (proxy, method, args) -> {
+                // Handle Object methods
+                String name = method.getName();
+                if (name.equals("toString")) return "JGuardEnforcementCallbackProxy";
+                if (name.equals("hashCode")) return System.identityHashCode(proxy);
+                if (name.equals("equals")) return proxy == args[0];
 
-      // The callback receives CallerContext from bootstrap classloader, so we need to
-      // extract its fields via reflection and create our own CallerContext
-      java.util.function.BiFunction<Object, Path, SecurityException> readCallback =
-          (bootstrapContext, path) -> {
-            try {
-              // Extract package and module from the bootstrap CallerContext
-              java.lang.reflect.Method getPackage = callerContextClass.getMethod("packageName");
-              java.lang.reflect.Method getModule = callerContextClass.getMethod("moduleName");
-              String packageName = (String) getPackage.invoke(bootstrapContext);
-              String moduleName = (String) getModule.invoke(bootstrapContext);
+                if (!name.equals("check")) {
+                  return null;
+                }
 
-              // Create our CallerContext (from agent classloader) with the same values
-              org.jguard.bootstrap.BootstrapEnforcer.CallerContext context =
-                  new org.jguard.bootstrap.BootstrapEnforcer.CallerContext(packageName, moduleName);
+                // Signature: check(CallerContext caller, Operation op, Object arg0, int arg1)
+                Object bootstrapCaller = args[0];
+                Object bootstrapOp = args[1];
+                Object arg0 = args[2];
+                int arg1 = (Integer) args[3];
 
-              return enforcer.checkFsReadReturningException(context, path);
-            } catch (Exception e) {
-              throw new RuntimeException("Failed to extract caller context", e);
-            }
-          };
+                // Convert bootstrap CallerContext -> agent-visible CallerContext
+                String pkg = (String) getPackage.invoke(bootstrapCaller);
+                String mod = (String) getModule.invoke(bootstrapCaller);
+                org.jguard.bootstrap.CallerContext agentCaller =
+                    new org.jguard.bootstrap.CallerContext(pkg, mod);
 
-      setCallback.invoke(null, readCallback);
+                // Convert bootstrap Operation -> agent Operation by name
+                String opName = ((Enum<?>) bootstrapOp).name();
+                org.jguard.bootstrap.Operation agentOp =
+                    org.jguard.bootstrap.Operation.valueOf(opName);
 
-      // Set up fs.write callback
-      java.lang.reflect.Method setWriteCallback =
-          enforcerClass.getMethod("setFsWriteCallback", java.util.function.BiFunction.class);
+                // Single dispatch to PolicyEnforcer.check()
+                return enforcer.check(agentCaller, agentOp, arg0, arg1);
+              });
 
-      java.util.function.BiFunction<Object, Path, SecurityException> writeCallback =
-          (bootstrapContext, path) -> {
-            try {
-              java.lang.reflect.Method getPackage = callerContextClass.getMethod("packageName");
-              java.lang.reflect.Method getModule = callerContextClass.getMethod("moduleName");
-              String packageName = (String) getPackage.invoke(bootstrapContext);
-              String moduleName = (String) getModule.invoke(bootstrapContext);
+      // Register callback reflectively on bootstrap BootstrapEnforcer
+      java.lang.reflect.Method setCallback = enforcerClass.getMethod("setCallback", callbackClass);
+      setCallback.invoke(null, callbackProxy);
 
-              org.jguard.bootstrap.BootstrapEnforcer.CallerContext context =
-                  new org.jguard.bootstrap.BootstrapEnforcer.CallerContext(packageName, moduleName);
-
-              return enforcer.checkFsWriteReturningException(context, path);
-            } catch (Exception e) {
-              throw new RuntimeException("Failed to extract caller context", e);
-            }
-          };
-
-      setWriteCallback.invoke(null, writeCallback);
-
-      // Set up network.outbound callback
-      java.lang.reflect.Method setNetworkCallback =
-          enforcerClass.getMethod("setNetworkOutboundCallback", java.util.function.Function.class);
-
-      java.util.function.Function<Object, SecurityException> networkCallback =
-          (bootstrapContext) -> {
-            try {
-              java.lang.reflect.Method getPackage = callerContextClass.getMethod("packageName");
-              java.lang.reflect.Method getModule = callerContextClass.getMethod("moduleName");
-              String packageName = (String) getPackage.invoke(bootstrapContext);
-              String moduleName = (String) getModule.invoke(bootstrapContext);
-
-              org.jguard.bootstrap.BootstrapEnforcer.CallerContext context =
-                  new org.jguard.bootstrap.BootstrapEnforcer.CallerContext(packageName, moduleName);
-
-              return enforcer.checkNetworkOutboundReturningException(context);
-            } catch (Exception e) {
-              throw new RuntimeException("Failed to extract caller context", e);
-            }
-          };
-
-      setNetworkCallback.invoke(null, networkCallback);
-
-      // Set up network.listen callback
-      java.lang.reflect.Method setNetworkListenCallback =
-          enforcerClass.getMethod("setNetworkListenCallback", java.util.function.BiFunction.class);
-
-      java.util.function.BiFunction<Object, Integer, SecurityException> networkListenCallback =
-          (bootstrapContext, port) -> {
-            try {
-              java.lang.reflect.Method getPackage = callerContextClass.getMethod("packageName");
-              java.lang.reflect.Method getModule = callerContextClass.getMethod("moduleName");
-              String packageName = (String) getPackage.invoke(bootstrapContext);
-              String moduleName = (String) getModule.invoke(bootstrapContext);
-
-              org.jguard.bootstrap.BootstrapEnforcer.CallerContext context =
-                  new org.jguard.bootstrap.BootstrapEnforcer.CallerContext(packageName, moduleName);
-
-              return enforcer.checkNetworkListenReturningException(context, port);
-            } catch (Exception e) {
-              throw new RuntimeException("Failed to extract caller context", e);
-            }
-          };
-
-      setNetworkListenCallback.invoke(null, networkListenCallback);
-
-      // Set enforcement mode
+      // Set mode (bootstrap enum identity)
       java.lang.reflect.Method setMode = enforcerClass.getMethod("setMode", modeClass);
       Object bootstrapMode = getEnumConstant(modeClass, config.mode().name());
       setMode.invoke(null, bootstrapMode);
 
-      // Set logging configuration
+      // Logging flags
       java.lang.reflect.Method setLogging =
           enforcerClass.getMethod("setLogging", boolean.class, boolean.class);
       setLogging.invoke(null, config.logDenied(), config.logAllowed());
