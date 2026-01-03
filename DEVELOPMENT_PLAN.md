@@ -254,6 +254,69 @@ Exit criteria:
 
 ---
 
+## Post-v0.1.0 Roadmap
+
+### M7 — Policy Hot Reload
+
+Enable policy updates without JVM restart:
+
+* File watcher for policy.bin changes (configurable interval or inotify)
+* Atomic PolicyEnforcer swap (volatile reference)
+* Decision cache invalidation on reload
+* Reload event logging and metrics
+* Optional: SIGHUP trigger for manual reload
+
+Implementation:
+
+```java
+// PolicyReloader watches for file changes
+public class PolicyReloader {
+  private final Path policyPath;
+  private final AtomicReference<PolicyEnforcer> enforcerRef;
+
+  public void onFileChanged() {
+    PolicyDescriptor newPolicy = BinaryPolicyReader.fromFile(policyPath);
+    PolicyEnforcer newEnforcer = new PolicyEnforcer(newPolicy, config);
+    enforcerRef.set(newEnforcer);
+    LOG.info("Policy reloaded: {}", policyPath);
+  }
+}
+```
+
+Exit criteria:
+
+* Policy changes take effect within configurable interval (default: 5s)
+* No restart required for entitlement updates
+* Thread-safe reload with no missed enforcement
+
+---
+
+### M8 — Additional Capabilities
+
+* `threads.create` — thread creation control
+* `native.load` — native library loading control
+* `process.exec` — subprocess execution control
+
+These use existing category infrastructure (SIMPLE or TARGET_PATTERN).
+
+---
+
+### M9 — Reflection Control
+
+* `reflect.invoke` — method invocation via reflection
+* `reflect.access` — setAccessible() control
+* Design decision: coarse (SIMPLE) vs fine-grained (TARGET_PATTERN with class patterns)
+
+Instrumented APIs:
+
+* `Method.invoke()`
+* `Field.get/set()`
+* `Constructor.newInstance()`
+* `AccessibleObject.setAccessible()`
+* `MethodHandle.invoke()` family
+
+---
+
 ## Initial capability set (v0.1.0)
 
 * `fs.read(root, glob)`
