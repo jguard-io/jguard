@@ -13,8 +13,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.file.Path;
 import java.util.List;
 import org.jguard.bootstrap.AgentConfig;
-import org.jguard.bootstrap.BootstrapEnforcer.CallerContext;
+import org.jguard.bootstrap.CallerContext;
 import org.jguard.bootstrap.EnforcementMode;
+import org.jguard.bootstrap.Operation;
 import org.jguard.policy.model.CapabilityArgument;
 import org.jguard.policy.model.CapabilityGrant;
 import org.jguard.policy.model.Entitlement;
@@ -58,9 +59,9 @@ class PolicyEnforcerTest {
       PolicyEnforcer enforcer = createEnforcer(policy);
 
       // Any package in the module should be allowed
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app"), dataFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app"), dataFile))
           .doesNotThrowAnyException();
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app.sub"), dataFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app.sub"), dataFile))
           .doesNotThrowAnyException();
     }
 
@@ -76,7 +77,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app"), dataFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app"), dataFile))
           .isInstanceOf(SecurityException.class)
           .hasMessageContaining("access denied")
           .hasMessageContaining("fs.read");
@@ -89,7 +90,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app"), outsideFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app"), outsideFile))
           .isInstanceOf(SecurityException.class)
           .hasMessageContaining("access denied");
     }
@@ -109,7 +110,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app.io"), dataFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app.io"), dataFile))
           .doesNotThrowAnyException();
     }
 
@@ -123,7 +124,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app.io.impl"), dataFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app.io.impl"), dataFile))
           .isInstanceOf(SecurityException.class);
     }
 
@@ -137,7 +138,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app.other"), dataFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app.other"), dataFile))
           .isInstanceOf(SecurityException.class);
     }
   }
@@ -156,7 +157,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app.io"), dataFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app.io"), dataFile))
           .doesNotThrowAnyException();
     }
 
@@ -170,9 +171,9 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app.io.impl"), dataFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app.io.impl"), dataFile))
           .doesNotThrowAnyException();
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app.io.impl.deep"), dataFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app.io.impl.deep"), dataFile))
           .doesNotThrowAnyException();
     }
 
@@ -186,7 +187,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app.other"), dataFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app.other"), dataFile))
           .isInstanceOf(SecurityException.class);
     }
   }
@@ -205,9 +206,9 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app.io"), dataFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app.io"), dataFile))
           .doesNotThrowAnyException();
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app.worker"), dataFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app.worker"), dataFile))
           .doesNotThrowAnyException();
     }
 
@@ -221,7 +222,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app"), dataFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app"), dataFile))
           .isInstanceOf(SecurityException.class);
     }
 
@@ -235,7 +236,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app.io.impl"), dataFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app.io.impl"), dataFile))
           .isInstanceOf(SecurityException.class);
     }
   }
@@ -253,7 +254,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app"), jsonFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app"), jsonFile))
           .doesNotThrowAnyException();
     }
 
@@ -266,7 +267,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app"), xmlFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app"), xmlFile))
           .isInstanceOf(SecurityException.class);
     }
 
@@ -278,7 +279,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app"), dataSubFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app"), dataSubFile))
           .doesNotThrowAnyException();
     }
   }
@@ -295,11 +296,11 @@ class PolicyEnforcerTest {
       PolicyEnforcer enforcer = createEnforcer(policy);
 
       // First call
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app"), dataFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app"), dataFile))
           .doesNotThrowAnyException();
 
       // Second call should hit cache
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app"), dataFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app"), dataFile))
           .doesNotThrowAnyException();
     }
 
@@ -311,11 +312,11 @@ class PolicyEnforcerTest {
       PolicyEnforcer enforcer = createEnforcer(policy);
 
       // First call
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app"), dataFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app"), dataFile))
           .isInstanceOf(SecurityException.class);
 
       // Second call should hit cache
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app"), dataFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app"), dataFile))
           .isInstanceOf(SecurityException.class);
     }
   }
@@ -333,7 +334,7 @@ class PolicyEnforcerTest {
 
       // Module matches policy module
       assertThatCode(
-              () -> enforcer.checkFsRead(caller("com.example.app", "com.example.app"), dataFile))
+              () -> checkFsRead(enforcer, caller("com.example.app", "com.example.app"), dataFile))
           .doesNotThrowAnyException();
     }
 
@@ -345,7 +346,7 @@ class PolicyEnforcerTest {
       PolicyEnforcer enforcer = createEnforcer(policy);
 
       // Unnamed modules (classpath) are allowed - package check still applies
-      assertThatCode(() -> enforcer.checkFsRead(caller("com.example.app", "unnamed"), dataFile))
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app", "unnamed"), dataFile))
           .doesNotThrowAnyException();
     }
 
@@ -359,7 +360,8 @@ class PolicyEnforcerTest {
       // Module mismatch - even if package matches, should be denied
       assertThatThrownBy(
               () ->
-                  enforcer.checkFsRead(caller("com.example.app", "com.malicious.module"), dataFile))
+                  checkFsRead(
+                      enforcer, caller("com.example.app", "com.malicious.module"), dataFile))
           .isInstanceOf(SecurityException.class)
           .hasMessageContaining("module")
           .hasMessageContaining("com.malicious.module");
@@ -377,7 +379,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app.io"), dataFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app.io"), dataFile))
           .hasMessageContaining("com.example.app.io");
     }
 
@@ -388,7 +390,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app"), dataFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app"), dataFile))
           .hasMessageContaining("fs.read");
     }
 
@@ -400,7 +402,7 @@ class PolicyEnforcerTest {
 
       PolicyEnforcer enforcer = createEnforcer(policy);
 
-      assertThatThrownBy(() -> enforcer.checkFsRead(caller("com.example.app"), secretFile))
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app"), secretFile))
           .hasMessageContaining("secret.txt");
     }
   }
@@ -442,5 +444,13 @@ class PolicyEnforcerTest {
   /** Creates a CallerContext for the default module (com.example.app). */
   private CallerContext caller(String packageName) {
     return caller(packageName, "com.example.app");
+  }
+
+  /** Helper to call check() and throw if denied, for test readability. */
+  private static void checkFsRead(PolicyEnforcer enforcer, CallerContext caller, Path path) {
+    SecurityException denial = enforcer.check(caller, Operation.FS_READ, path, 0);
+    if (denial != null) {
+      throw denial;
+    }
   }
 }

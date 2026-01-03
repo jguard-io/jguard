@@ -15,7 +15,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jguard.bootstrap.AgentConfig;
 import org.jguard.bootstrap.AgentLogger;
-import org.jguard.bootstrap.BootstrapEnforcer.CallerContext;
+import org.jguard.bootstrap.CallerContext;
+import org.jguard.bootstrap.Operation;
 import org.jguard.policy.model.CapabilityArgument;
 import org.jguard.policy.model.Entitlement;
 import org.jguard.policy.model.PolicyDescriptor;
@@ -44,187 +45,105 @@ public final class PolicyEnforcer {
     this.policy = policy;
     this.moduleName = policy.moduleName();
     this.config = config;
-    indexFsEntitlements();
+    indexEntitlements();
     LOG.info("PolicyEnforcer initialized for module: {}", moduleName);
   }
 
+  // ========== SINGLE DISPATCH ENTRY POINT ==========
+
   /**
-   * Checks if the caller is entitled to read the specified path.
+   * Checks if the caller is entitled to perform the specified operation.
    *
-   * <p>This method verifies both the package and module of the caller against the policy. A caller
-   * is only allowed if:
+   * <p>This is the single entry point for all capability checks. It handles:
    *
    * <ul>
-   *   <li>The caller's module matches the policy's expected module, OR
-   *   <li>The caller is in an unnamed module (classpath) and the policy allows unnamed modules
-   *   <li>AND the caller's package matches an entitlement for the requested path
+   *   <li>Module identity verification
+   *   <li>Decision caching for performance
+   *   <li>Dispatch to operation-specific entitlement checking
    * </ul>
    *
    * @param context the caller context containing package and module information
-   * @param path the path being accessed
+   * @param op the operation being performed
+   * @param arg0 primary argument (Path for fs ops, String host for net connect, null for listen)
+   * @param arg1 secondary argument (0 for fs ops, port for network ops)
    * @return null if allowed, SecurityException if denied
    */
-  public SecurityException checkFsReadReturningException(CallerContext context, Path path) {
+  public SecurityException check(CallerContext context, Operation op, Object arg0, int arg1) {
     String callerPackage = context.packageName();
     String callerModule = context.moduleName();
 
     // First, verify module identity
     if (!isValidModule(callerModule)) {
       LOG.debug("Module mismatch: caller module={}, expected module={}", callerModule, moduleName);
-      return deniedModuleMismatch(callerPackage, callerModule, path.toString());
+      return deniedModuleMismatch(callerPackage, callerModule, formatDetails(op, arg0, arg1));
     }
 
-    String cacheKey = callerPackage + ":" + callerModule + ":fs.read:" + path.toAbsolutePath();
+    // Build cache key
+    String cacheKey = buildCacheKey(callerPackage, callerModule, op, arg0, arg1);
     Boolean cached = decisionCache.get(cacheKey);
     if (cached != null) {
-      return cached ? null : denied(callerPackage, "fs.read", path.toString());
+      return cached
+          ? null
+          : denied(callerPackage, op.capabilityName(), formatDetails(op, arg0, arg1));
     }
 
-    boolean allowed = isAllowedFsRead(callerPackage, path);
+    // Check entitlements
+    boolean allowed = isAllowed(callerPackage, op, arg0, arg1);
     decisionCache.put(cacheKey, allowed);
 
-    return allowed ? null : denied(callerPackage, "fs.read", path.toString());
+    return allowed
+        ? null
+        : denied(callerPackage, op.capabilityName(), formatDetails(op, arg0, arg1));
+  }
+
+  // ========== CATEGORY-BASED DISPATCH ==========
+
+  /**
+   * Formats operation details for error messages.
+   *
+   * <p>Uses operation category - adding new operations with existing categories requires no
+   * changes.
+   */
+  private static String formatDetails(Operation op, Object arg0, int arg1) {
+    return switch (op.category()) {
+      case FILESYSTEM -> arg0 != null ? arg0.toString() : "unknown path";
+      case SIMPLE -> op.capabilityName();
+      case PORT -> "port " + arg1;
+      case TARGET_PATTERN -> arg0 != null ? arg0.toString() : "any target";
+    };
   }
 
   /**
-   * Checks if the caller is entitled to read the specified path. Throws if denied.
+   * Builds a cache key for the given operation.
    *
-   * @param context the caller context containing package and module information
-   * @param path the path being accessed
-   * @throws SecurityException if access is denied
+   * <p>Uses operation category - adding new operations with existing categories requires no
+   * changes.
    */
-  public void checkFsRead(CallerContext context, Path path) {
-    SecurityException denial = checkFsReadReturningException(context, path);
-    if (denial != null) {
-      throw denial;
-    }
+  private static String buildCacheKey(
+      String callerPackage, String callerModule, Operation op, Object arg0, int arg1) {
+    String base = callerPackage + ":" + callerModule + ":" + op.capabilityName();
+    return switch (op.category()) {
+      case FILESYSTEM -> base + ":" + ((Path) arg0).toAbsolutePath();
+      case SIMPLE -> base;
+      case PORT -> base + ":" + arg1;
+      case TARGET_PATTERN -> base + ":" + (arg0 != null ? arg0 : "any");
+    };
   }
 
   /**
-   * Checks if the caller is entitled to write to the specified path.
+   * Dispatches to category-specific entitlement checking.
    *
-   * @param context the caller context containing package and module information
-   * @param path the path being written
-   * @return null if allowed, SecurityException if denied
+   * <p>Uses operation category - adding new operations with existing categories requires no
+   * changes.
    */
-  public SecurityException checkFsWriteReturningException(CallerContext context, Path path) {
-    String callerPackage = context.packageName();
-    String callerModule = context.moduleName();
-
-    // First, verify module identity
-    if (!isValidModule(callerModule)) {
-      LOG.debug("Module mismatch: caller module={}, expected module={}", callerModule, moduleName);
-      return deniedModuleMismatch(callerPackage, callerModule, path.toString());
-    }
-
-    String cacheKey = callerPackage + ":" + callerModule + ":fs.write:" + path.toAbsolutePath();
-    Boolean cached = decisionCache.get(cacheKey);
-    if (cached != null) {
-      return cached ? null : denied(callerPackage, "fs.write", path.toString());
-    }
-
-    boolean allowed = isAllowedFsWrite(callerPackage, path);
-    decisionCache.put(cacheKey, allowed);
-
-    return allowed ? null : denied(callerPackage, "fs.write", path.toString());
-  }
-
-  /**
-   * Checks if the caller is entitled to write to the specified path. Throws if denied.
-   *
-   * @param context the caller context containing package and module information
-   * @param path the path being written
-   * @throws SecurityException if access is denied
-   */
-  public void checkFsWrite(CallerContext context, Path path) {
-    SecurityException denial = checkFsWriteReturningException(context, path);
-    if (denial != null) {
-      throw denial;
-    }
-  }
-
-  /**
-   * Checks if the caller is entitled to make outbound network connections.
-   *
-   * @param context the caller context containing package and module information
-   * @return null if allowed, SecurityException if denied
-   */
-  public SecurityException checkNetworkOutboundReturningException(CallerContext context) {
-    String callerPackage = context.packageName();
-    String callerModule = context.moduleName();
-
-    // First, verify module identity
-    if (!isValidModule(callerModule)) {
-      LOG.debug("Module mismatch: caller module={}, expected module={}", callerModule, moduleName);
-      return deniedModuleMismatch(callerPackage, callerModule, "network.outbound");
-    }
-
-    String cacheKey = callerPackage + ":" + callerModule + ":network.outbound";
-    Boolean cached = decisionCache.get(cacheKey);
-    if (cached != null) {
-      return cached ? null : denied(callerPackage, "network.outbound", "outbound connection");
-    }
-
-    boolean allowed = isAllowedNetworkOutbound(callerPackage);
-    decisionCache.put(cacheKey, allowed);
-
-    return allowed ? null : denied(callerPackage, "network.outbound", "outbound connection");
-  }
-
-  /**
-   * Checks if the caller is entitled to make outbound network connections. Throws if denied.
-   *
-   * @param context the caller context containing package and module information
-   * @throws SecurityException if access is denied
-   */
-  public void checkNetworkOutbound(CallerContext context) {
-    SecurityException denial = checkNetworkOutboundReturningException(context);
-    if (denial != null) {
-      throw denial;
-    }
-  }
-
-  /**
-   * Checks if the caller is entitled to listen on a server socket.
-   *
-   * @param context the caller context containing package and module information
-   * @param port the port being bound to
-   * @return null if allowed, SecurityException if denied
-   */
-  public SecurityException checkNetworkListenReturningException(CallerContext context, int port) {
-    String callerPackage = context.packageName();
-    String callerModule = context.moduleName();
-
-    // First, verify module identity
-    if (!isValidModule(callerModule)) {
-      LOG.debug("Module mismatch: caller module={}, expected module={}", callerModule, moduleName);
-      return deniedModuleMismatch(callerPackage, callerModule, "network.listen");
-    }
-
-    String cacheKey = callerPackage + ":" + callerModule + ":network.listen:" + port;
-    Boolean cached = decisionCache.get(cacheKey);
-    if (cached != null) {
-      return cached ? null : denied(callerPackage, "network.listen", "port " + port);
-    }
-
-    boolean allowed = isAllowedNetworkListen(callerPackage, port);
-    decisionCache.put(cacheKey, allowed);
-
-    return allowed ? null : denied(callerPackage, "network.listen", "port " + port);
-  }
-
-  /**
-   * Checks if the caller is entitled to listen on a server socket. Throws if denied.
-   *
-   * @param context the caller context containing package and module information
-   * @param port the port being bound to
-   * @throws SecurityException if access is denied
-   */
-  public void checkNetworkListen(CallerContext context, int port) {
-    SecurityException denial = checkNetworkListenReturningException(context, port);
-    if (denial != null) {
-      throw denial;
-    }
+  private boolean isAllowed(String callerPackage, Operation op, Object arg0, int arg1) {
+    String capability = op.capabilityName();
+    return switch (op.category()) {
+      case FILESYSTEM -> isAllowedFilesystem(callerPackage, (Path) arg0, capability);
+      case SIMPLE -> isAllowedSimple(callerPackage, capability);
+      case PORT -> isAllowedPort(callerPackage, arg1, capability);
+      case TARGET_PATTERN -> isAllowedTargetPattern(callerPackage, (String) arg0, capability);
+    };
   }
 
   /**
@@ -256,37 +175,39 @@ public final class PolicyEnforcer {
     return false;
   }
 
-  private boolean isAllowedFsRead(String callerPackage, Path path) {
-    return isAllowedFsOperation(callerPackage, path, "fs.read");
-  }
+  // ========== CATEGORY HANDLERS ==========
 
-  private boolean isAllowedFsWrite(String callerPackage, Path path) {
-    return isAllowedFsOperation(callerPackage, path, "fs.write");
-  }
-
-  private boolean isAllowedNetworkOutbound(String callerPackage) {
-    // Check all entitlements that apply to this caller
+  /**
+   * Handles SIMPLE category - no argument matching, just subject check.
+   *
+   * <p>Used for: network.outbound, threads.create, etc.
+   */
+  private boolean isAllowedSimple(String callerPackage, String capability) {
     for (Entitlement entitlement : policy.entitlements()) {
-      if (!entitlement.capability().name().equals("network.outbound")) {
+      if (!entitlement.capability().name().equals(capability)) {
         continue;
       }
       if (!subjectMatches(entitlement.subject(), callerPackage)) {
         continue;
       }
 
-      // network.outbound takes no arguments - if the subject matches, it's allowed
-      LOG.debug("network.outbound allowed: package={}, entitlement={}", callerPackage, entitlement);
+      // Simple capabilities take no arguments - if the subject matches, it's allowed
+      LOG.debug("{} allowed: package={}, entitlement={}", capability, callerPackage, entitlement);
       return true;
     }
 
-    LOG.debug("network.outbound denied: package={}", callerPackage);
+    LOG.debug("{} denied: package={}", capability, callerPackage);
     return false;
   }
 
-  private boolean isAllowedNetworkListen(String callerPackage, int port) {
-    // Check all entitlements that apply to this caller
+  /**
+   * Handles PORT category - optional port restriction.
+   *
+   * <p>Used for: network.listen
+   */
+  private boolean isAllowedPort(String callerPackage, int port, String capability) {
     for (Entitlement entitlement : policy.entitlements()) {
-      if (!entitlement.capability().name().equals("network.listen")) {
+      if (!entitlement.capability().name().equals(capability)) {
         continue;
       }
       if (!subjectMatches(entitlement.subject(), callerPackage)) {
@@ -295,20 +216,22 @@ public final class PolicyEnforcer {
 
       List<CapabilityArgument> args = entitlement.capability().arguments();
       if (args.isEmpty()) {
-        // network.listen with no arguments - allows any port
+        // No arguments - allows any port
         LOG.debug(
-            "network.listen allowed (any port): package={}, port={}, entitlement={}",
+            "{} allowed (any port): package={}, port={}, entitlement={}",
+            capability,
             callerPackage,
             port,
             entitlement);
         return true;
       } else if (args.size() == 1) {
-        // network.listen(port) - check specific port
+        // Specific port restriction
         long allowedPort = ((CapabilityArgument.IntegerArg) args.get(0)).value();
         if (port == allowedPort || port == 0) {
-          // Port 0 means "any available port" - we allow it if they have any listen entitlement
+          // Port 0 means "any available port" - allow if they have any entitlement
           LOG.debug(
-              "network.listen allowed (port match): package={}, port={}, entitlement={}",
+              "{} allowed (port match): package={}, port={}, entitlement={}",
+              capability,
               callerPackage,
               port,
               entitlement);
@@ -317,11 +240,92 @@ public final class PolicyEnforcer {
       }
     }
 
-    LOG.debug("network.listen denied: package={}, port={}", callerPackage, port);
+    LOG.debug("{} denied: package={}, port={}", capability, callerPackage, port);
     return false;
   }
 
-  private boolean isAllowedFsOperation(String callerPackage, Path path, String capability) {
+  /**
+   * Handles TARGET_PATTERN category - optional pattern restriction.
+   *
+   * <p>Used for: reflect.invoke, native.load, process.exec, etc.
+   */
+  private boolean isAllowedTargetPattern(String callerPackage, String target, String capability) {
+    for (Entitlement entitlement : policy.entitlements()) {
+      if (!entitlement.capability().name().equals(capability)) {
+        continue;
+      }
+      if (!subjectMatches(entitlement.subject(), callerPackage)) {
+        continue;
+      }
+
+      List<CapabilityArgument> args = entitlement.capability().arguments();
+      if (args.isEmpty()) {
+        // No arguments - allows any target
+        LOG.debug(
+            "{} allowed (any target): package={}, target={}, entitlement={}",
+            capability,
+            callerPackage,
+            target,
+            entitlement);
+        return true;
+      } else if (args.size() == 1) {
+        // Pattern restriction - match target against pattern
+        String pattern = ((CapabilityArgument.StringArg) args.get(0)).value();
+        if (targetMatchesPattern(target, pattern)) {
+          LOG.debug(
+              "{} allowed (pattern match): package={}, target={}, pattern={}, entitlement={}",
+              capability,
+              callerPackage,
+              target,
+              pattern,
+              entitlement);
+          return true;
+        }
+      }
+    }
+
+    LOG.debug("{} denied: package={}, target={}", capability, callerPackage, target);
+    return false;
+  }
+
+  /**
+   * Matches a target (class name, library path, etc.) against a pattern.
+   *
+   * <p>Pattern syntax:
+   *
+   * <ul>
+   *   <li>{@code com.example.Foo} - exact match
+   *   <li>{@code com.example.*} - matches direct children (com.example.Foo, not
+   *       com.example.sub.Bar)
+   *   <li>{@code com.example.**} - matches all descendants
+   * </ul>
+   */
+  private boolean targetMatchesPattern(String target, String pattern) {
+    if (target == null) {
+      return false;
+    }
+    if (pattern.endsWith(".**")) {
+      String prefix = pattern.substring(0, pattern.length() - 3);
+      return target.equals(prefix) || target.startsWith(prefix + ".");
+    } else if (pattern.endsWith(".*")) {
+      String prefix = pattern.substring(0, pattern.length() - 2);
+      if (!target.startsWith(prefix + ".")) {
+        return false;
+      }
+      // Check there's exactly one more segment (no more dots after prefix)
+      String remainder = target.substring(prefix.length() + 1);
+      return !remainder.contains(".");
+    } else {
+      return target.equals(pattern);
+    }
+  }
+
+  /**
+   * Handles FILESYSTEM category - root + glob matching.
+   *
+   * <p>Used for: fs.read, fs.write
+   */
+  private boolean isAllowedFilesystem(String callerPackage, Path path, String capability) {
     Path absPath = path.toAbsolutePath().normalize();
 
     // Check all entitlements that apply to this caller
@@ -405,15 +409,9 @@ public final class PolicyEnforcer {
     return matcher.matches(relativePath);
   }
 
-  private void indexFsEntitlements() {
+  private void indexEntitlements() {
     for (Entitlement entitlement : policy.entitlements()) {
-      String capName = entitlement.capability().name();
-      if (capName.equals("fs.read")
-          || capName.equals("fs.write")
-          || capName.equals("network.outbound")
-          || capName.equals("network.listen")) {
-        LOG.debug("Indexed {} entitlement: {}", capName, entitlement);
-      }
+      LOG.debug("Indexed entitlement: {}", entitlement);
     }
   }
 

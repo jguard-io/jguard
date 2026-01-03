@@ -10,7 +10,7 @@ java -javaagent:jguard-agent.jar=/path/to/policy.bin -jar myapp.jar
 
 ## How It Works
 
-The agent uses ByteBuddy to instrument `java.nio.file.Files` methods, intercepting file system operations and checking them against compiled policy files.
+The agent uses ByteBuddy to instrument JDK filesystem and network classes, intercepting operations and checking them against compiled policy files.
 
 ### Enforcement Flow
 
@@ -53,7 +53,7 @@ This separation is necessary because advice woven into JDK classes can only refe
 - **PERMISSIVE**: Block denied access, allow on errors. Useful for migration.
 - **AUDIT**: Log only, never block. Useful for policy development.
 
-## Instrumented Classes
+## Instrumented Classes (Read Operations)
 
 ### java.nio.file.Files
 
@@ -96,12 +96,87 @@ NIO channel API. The factory method is instrumented:
 
 - `FileChannel.open(Path, ...)`
 
+## Instrumented Classes (Write Operations)
+
+### java.nio.file.Files
+
+All write operations are instrumented:
+
+- `newOutputStream(Path)`
+- `newBufferedWriter(Path)`
+- `write(Path, byte[])`
+- `write(Path, Iterable)`
+- `writeString(Path, CharSequence)`
+- `copy(InputStream, Path)`
+- `copy(Path, OutputStream)`
+- `move(Path, Path)`
+- `createFile(Path)`
+- `createDirectory(Path)`
+- `createDirectories(Path)`
+- `delete(Path)`
+- `deleteIfExists(Path)`
+
+### java.io.FileOutputStream
+
+The legacy IO write API. Both constructors are instrumented:
+
+- `FileOutputStream(File)`
+- `FileOutputStream(String)`
+
+### java.io.FileWriter
+
+Character stream write API. Both constructors are instrumented:
+
+- `FileWriter(File)`
+- `FileWriter(String)`
+
+## Instrumented Classes (Network Outbound)
+
+### java.net.Socket
+
+Client socket connections are instrumented:
+
+- `Socket(String, int)`
+- `Socket(InetAddress, int)`
+- `Socket.connect(SocketAddress)`
+
+### java.nio.channels.SocketChannel
+
+NIO socket connections are instrumented:
+
+- `SocketChannel.connect(SocketAddress)`
+
+## Instrumented Classes (Network Listen)
+
+### java.net.ServerSocket
+
+Server socket binding is instrumented:
+
+- `ServerSocket(int)`
+- `ServerSocket(int, int)`
+- `ServerSocket.bind(SocketAddress)`
+
+### java.nio.channels.ServerSocketChannel
+
+NIO server socket binding is instrumented:
+
+- `ServerSocketChannel.bind(SocketAddress)`
+
 ## Limitations
 
-### Current Scope (M3.1)
+### Current Scope
 
-- Only `fs.read` capability is enforced
-- Write operations are not yet instrumented
+The following capabilities are fully enforced:
+
+- `fs.read` — filesystem read operations
+- `fs.write` — filesystem write operations
+- `network.outbound` — outbound socket connections
+- `network.listen` — server socket binding
+
+### Not Yet Implemented
+
+- `threads.create` — thread creation
+- `native.load` — native library loading
 
 ### JVM Bootstrap Operations
 
