@@ -233,10 +233,26 @@ jguard compile module-info.jguard -o /etc/myapp/policy.bin
 java -javaagent:jguard-agent.jar=/etc/myapp/policy.bin \
      -Djguard.mode=strict \
      -jar your-app.jar
+```
 
-# Update entitlements without rebuild (restart required)
+### 5. Policy hot reload (zero-downtime updates)
+
+Enable hot reload to update entitlements without restarting the JVM:
+
+```bash
+java -javaagent:jguard-agent.jar=/etc/myapp/policy.bin \
+     -Djguard.mode=strict \
+     -Djguard.reload=true \
+     -Djguard.reload.interval=5 \
+     -jar your-app.jar
+```
+
+When enabled, the agent polls the policy file for changes. Update the policy and changes take effect automatically:
+
+```bash
+# Update policy - no restart needed!
 jguard compile updated-policy.jguard -o /etc/myapp/policy.bin
-systemctl restart myapp
+# Changes detected and applied within 5 seconds
 ```
 
 See [agent/README.md](agent/README.md) for full agent documentation and [gradle-plugin/README.md](gradle-plugin/README.md) for build integration.
