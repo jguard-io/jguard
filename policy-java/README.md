@@ -22,7 +22,7 @@ import static org.jguard.policy.java.Subjects.*;
 PolicyDescriptor policy = JGuardPolicy.forModule("com.example.app")
     .grant(module(), fsRead("/data", "*.json"))
     .grant(pkg("com.example.app.net"), networkOutbound())
-    .grant(pkgRecursive("com.example.app.worker"), threadsSpawn())
+    .grant(pkgRecursive("com.example.app.worker"), threadsCreate())
     .build();
 ```
 
@@ -33,7 +33,7 @@ This is equivalent to:
 security module com.example.app {
     entitle module to fs.read("/data", "*.json");
     entitle com.example.app.net to network.outbound;
-    entitle com.example.app.worker.. to threads.spawn;
+    entitle com.example.app.worker.. to threads.create;
 }
 ```
 
@@ -72,7 +72,7 @@ Factory methods for defining what actions are permitted.
 | `fsWrite(root, glob)` | `fs.write("/path", "*.ext")` | Write files matching glob under root |
 | `networkOutbound()` | `network.outbound` | Make outbound network connections |
 | `networkListen(port)` | `network.listen(8080)` | Listen on a specific port |
-| `threadsSpawn()` | `threads.spawn` | Create new threads |
+| `threadsCreate()` | `threads.create` | Create new threads |
 | `nativeLoad()` | `native.load` | Load native libraries |
 
 ## Examples
@@ -104,7 +104,7 @@ grant(pkgChildren("com.example.app.server"), networkListen(8080));
 
 ```java
 // Allow worker packages to spawn threads
-grant(pkgRecursive("com.example.app.worker"), threadsSpawn());
+grant(pkgRecursive("com.example.app.worker"), threadsCreate());
 ```
 
 ### Native Libraries
@@ -138,7 +138,7 @@ public class PolicyGenerator {
             .grant(pkgChildren("com.example.app.server"), networkListen(8080))
 
             // Thread spawning for worker hierarchy
-            .grant(pkgRecursive("com.example.app.worker"), threadsSpawn())
+            .grant(pkgRecursive("com.example.app.worker"), threadsCreate())
 
             // Native library loading
             .grant(pkg("com.example.app.jni"), nativeLoad())

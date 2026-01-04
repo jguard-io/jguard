@@ -13,10 +13,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
- * Background worker entitled to spawn threads.
+ * Background worker entitled to create threads.
  *
  * <p>This class is in the {@code org.jguard.samples.sandbox.worker} package,
- * which is entitled to {@code threads.spawn} capability (including subpackages).
+ * which is entitled to {@code threads.create} capability (including subpackages).
  */
 public final class BackgroundWorker implements AutoCloseable {
 

@@ -168,15 +168,15 @@ class CapabilitiesTest {
   }
 
   @Nested
-  @DisplayName("threads.spawn")
+  @DisplayName("threads.create")
   class ThreadsSpawnTest {
 
     @Test
-    @DisplayName("creates threads.spawn capability without arguments")
+    @DisplayName("creates threads.create capability without arguments")
     void createsThreadsSpawnCapability() {
-      CapabilityGrant capability = threadsSpawn();
+      CapabilityGrant capability = threadsCreate();
 
-      assertThat(capability.name()).isEqualTo("threads.spawn");
+      assertThat(capability.name()).isEqualTo("threads.create");
       assertThat(capability.hasArguments()).isFalse();
     }
   }
@@ -203,7 +203,7 @@ class CapabilitiesTest {
     @DisplayName("capabilities produce correct canonical strings")
     void correctCanonicalStrings() {
       assertThat(networkOutbound().toCanonicalString()).isEqualTo("network.outbound");
-      assertThat(threadsSpawn().toCanonicalString()).isEqualTo("threads.spawn");
+      assertThat(threadsCreate().toCanonicalString()).isEqualTo("threads.create");
       assertThat(nativeLoad().toCanonicalString()).isEqualTo("native.load");
       assertThat(networkListen(8080).toCanonicalString()).isEqualTo("network.listen(8080)");
       assertThat(fsRead("/data", "*.json").toCanonicalString())

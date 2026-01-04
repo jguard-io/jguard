@@ -233,75 +233,158 @@ Exit criteria:
 
 ---
 
-### M5 — Integration proof
+### M4.2 — Thread Creation Enforcement ✓
 
-* One real plugin-style integration
-* Policy-driven behavior change
-* Install-time entitlement visibility
+* `threads.create` capability grants thread creation rights
+* Instrumented classes:
+  * `java.lang.Thread` - start() method
+* BootstrapEnforcer.onThreadCreate(threadName, threadId) callback
+* PolicyEnforcer.checkThreadsCreate(context) for policy evaluation
+* Package-scoped entitlements (e.g., `com.example.worker..`)
 
 Exit criteria:
 
-* real application runs with restricted privileges
+* demonstrable prevention of unauthorized thread creation ✓
 
 ---
 
-### M6 — Release hardening
+### M4.3 — Native Library Loading Enforcement ✓
 
-* Documentation
-* Compatibility statement
-* Versioned policy format
+* `native.load` capability grants native library loading rights
+  * `native.load` (no arguments) - allows loading any library
+  * `native.load(pattern)` (1 string argument) - allows loading specific library patterns
+* Instrumented classes:
+  * `java.lang.System` - loadLibrary() and load() methods
+  * `java.lang.Runtime` - loadLibrary() and load() methods
+* BootstrapEnforcer.onNativeLoad(libraryName) callback
+* PolicyEnforcer.checkNativeLoad(context, libraryName) for policy evaluation
+
+Exit criteria:
+
+* demonstrable prevention of unauthorized native library loading ✓
+
+---
+
+### M4.4 — Policy Hot Reload ✓
+
+* Runtime policy updates without JVM restart
+* Configuration via system properties:
+  * `jguard.reload=true` - enable hot reload
+  * `jguard.reload.interval=5` - poll interval in seconds
+* Implementation:
+  * `PolicyReloader` polls policy file for changes
+  * Atomic swap of `PolicyEnforcer` via `AtomicReference`
+  * Decision cache cleared on reload
+* Graceful error handling for missing/corrupted policy files
+
+Exit criteria:
+
+* policy changes take effect without restart ✓
+* corrupted policy files don't crash the agent ✓
+
+---
+
+### M4.5 — Bootstrap Refactoring (Single Dispatch) ✓
+
+Refactored BootstrapEnforcer for maintainability and extensibility:
+
+* Single dispatch architecture via `Operation` enum
+* Unified `EnforcementCallback` interface
+* Table-driven capability handling
+* Configurable skip prefixes for caller attribution
+* System.Logger for bootstrap logging (JDK-native)
+
+Benefits:
+
+* Adding new capability = enum entry + advice + handler
+* ~600 lines reduced to ~250 lines
+* No more duplication across capabilities
+
+---
+
+### M5 — Integration proof ✓
+
+* `samples/sandbox-demo` demonstrates full integration
+* Policy-driven behavior change across all 6 capabilities
+* Entitled vs unentitled operations clearly demonstrated
+* `./gradlew runWithAgent` for enforcement testing
+
+Exit criteria:
+
+* real application runs with restricted privileges ✓
+
+---
+
+### M6 — Release hardening ✓
+
+* Documentation ✓
+  * README.md - User overview with all capabilities
+  * agent/README.md - Full instrumentation reference
+  * gradle-plugin/README.md - Build integration guide
+  * policy/README.md - Compiler internals and grammar
+  * docs/spec/jguard-policy-descriptor.md - EBNF specification
+  * samples/sandbox-demo/README.md - Getting started tutorial
+* Compatibility statement ✓
+* Versioned policy format (version 1) ✓
+* Comprehensive test coverage ✓
+  * PolicyEnforcerTest - all capability categories
+  * PolicyReloaderTest - hot reload scenarios
+  * EntitlementTest - sandbox-demo integration
+
+Remaining for v0.1.0 release:
+
 * `v0.1.0` tag + release notes
+* Maven Central publication
+
+---
+
+## Initial capability set (v0.1.0) — COMPLETE ✓
+
+| Capability | Status | Category |
+|------------|--------|----------|
+| `fs.read(root, glob)` | ✓ | FILESYSTEM |
+| `fs.write(root, glob)` | ✓ | FILESYSTEM |
+| `network.outbound` | ✓ | SIMPLE |
+| `network.listen(port?)` | ✓ | PORT |
+| `threads.create` | ✓ | SIMPLE |
+| `native.load(pattern?)` | ✓ | TARGET_PATTERN |
+
+Additional features:
+
+| Feature | Status |
+|---------|--------|
+| Policy hot reload | ✓ |
+| Enforcement modes (STRICT/PERMISSIVE/AUDIT) | ✓ |
+| Single dispatch architecture | ✓ |
+| Gradle plugin with runWithAgent | ✓ |
+| Comprehensive documentation | ✓ |
+
+---
+
+## Release bar — MET ✓
+
+| Criterion | Status |
+|-----------|--------|
+| Policy is deterministic | ✓ |
+| Denial is reliable | ✓ |
+| Errors are understandable | ✓ |
+| Surface area is small enough to reason about | ✓ |
 
 ---
 
 ## Post-v0.1.0 Roadmap
 
-### M7 — Policy Hot Reload
+### M7 — Process Execution Control
 
-Enable policy updates without JVM restart:
-
-* File watcher for policy.bin changes (configurable interval or inotify)
-* Atomic PolicyEnforcer swap (volatile reference)
-* Decision cache invalidation on reload
-* Reload event logging and metrics
-* Optional: SIGHUP trigger for manual reload
-
-Implementation:
-
-```java
-// PolicyReloader watches for file changes
-public class PolicyReloader {
-  private final Path policyPath;
-  private final AtomicReference<PolicyEnforcer> enforcerRef;
-
-  public void onFileChanged() {
-    PolicyDescriptor newPolicy = BinaryPolicyReader.fromFile(policyPath);
-    PolicyEnforcer newEnforcer = new PolicyEnforcer(newPolicy, config);
-    enforcerRef.set(newEnforcer);
-    LOG.info("Policy reloaded: {}", policyPath);
-  }
-}
-```
-
-Exit criteria:
-
-* Policy changes take effect within configurable interval (default: 5s)
-* No restart required for entitlement updates
-* Thread-safe reload with no missed enforcement
+* `process.exec` capability for subprocess execution control
+* Instrumented APIs:
+  * `ProcessBuilder.start()`
+  * `Runtime.exec()`
+* Optional command pattern matching
 
 ---
 
-### M8 — Additional Capabilities
-
-* `threads.create` — thread creation control
-* `native.load` — native library loading control
-* `process.exec` — subprocess execution control
-
-These use existing category infrastructure (SIMPLE or TARGET_PATTERN).
-
----
-
-### M9 — Reflection Control
+### M8 — Reflection Control
 
 * `reflect.invoke` — method invocation via reflection
 * `reflect.access` — setAccessible() control
@@ -317,23 +400,12 @@ Instrumented APIs:
 
 ---
 
-## Initial capability set (v0.1.0)
+### M9 — Additional Capabilities
 
-* `fs.read(root, glob)`
-* `fs.write(root, glob)`
-* `network.outbound`
-* `network.listen`
+Potential additions:
 
-Everything else deferred.
-
----
-
-## Release bar
-
-We ship when:
-
-* policy is deterministic
-* denial is reliable
-* errors are understandable
-* the surface area is small enough to reason about
+* `env.read` / `env.write` — environment variable access
+* `classloader.create` — custom classloader creation
+* Network host/port filtering for `network.outbound`
+* `system.property.read` / `system.property.write` — system property access
 

@@ -54,7 +54,21 @@ public enum Operation {
    *
    * <p>Arguments: {@code arg0} = null, {@code arg1} = port (0 = ephemeral)
    */
-  NET_LISTEN("network.listen", Category.PORT);
+  NET_LISTEN("network.listen", Category.PORT),
+
+  /**
+   * Thread creation.
+   *
+   * <p>Arguments: {@code arg0} = thread name (for logging), {@code arg1} = 0
+   */
+  THREAD_CREATE("threads.create", Category.SIMPLE),
+
+  /**
+   * Native library loading.
+   *
+   * <p>Arguments: {@code arg0} = library name, {@code arg1} = 0
+   */
+  NATIVE_LOAD("native.load", Category.TARGET_PATTERN);
 
   /**
    * Categories determine matching logic in PolicyEnforcer.

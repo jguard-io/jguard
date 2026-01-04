@@ -83,7 +83,7 @@ class ParserTest {
   @Test
   void parsesRecursiveSubject() {
     PolicyFile ast =
-        parse("security module app { entitle com.example.worker.. to threads.spawn; }");
+        parse("security module app { entitle com.example.worker.. to threads.create; }");
     assertThat(ast.entitlements()).hasSize(1);
 
     Subject.Package pkg = (Subject.Package) ast.entitlements().get(0).subject();
@@ -164,7 +164,7 @@ class ParserTest {
         security module app {
             entitle module to fs.read("/data", "*");
             entitle com.example.net to network.outbound;
-            entitle com.example.worker.. to threads.spawn;
+            entitle com.example.worker.. to threads.create;
         }
         """;
 
@@ -183,7 +183,7 @@ class ParserTest {
     // Third entitlement
     Subject.Package pkg3 = (Subject.Package) ast.entitlements().get(2).subject();
     assertThat(pkg3.pattern().matchType()).isEqualTo(PackagePattern.MatchType.RECURSIVE);
-    assertThat(ast.entitlements().get(2).capability().name()).isEqualTo("threads.spawn");
+    assertThat(ast.entitlements().get(2).capability().name()).isEqualTo("threads.create");
   }
 
   // ===== Source Location Tracking =====

@@ -195,7 +195,7 @@ class SerializationTest {
           new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.outbound"));
       Entitlement e2 =
           new Entitlement(
-              SubjectPattern.exactPackage("com.example"), CapabilityGrant.of("threads.spawn"));
+              SubjectPattern.exactPackage("com.example"), CapabilityGrant.of("threads.create"));
       PolicyDescriptor policy = PolicyDescriptor.create("app", List.of(e1, e2));
 
       byte[] bytes1 = BinaryPolicyWriter.toBytes(policy);
@@ -210,7 +210,7 @@ class SerializationTest {
           new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.outbound"));
       Entitlement e2 =
           new Entitlement(
-              SubjectPattern.exactPackage("com.example"), CapabilityGrant.of("threads.spawn"));
+              SubjectPattern.exactPackage("com.example"), CapabilityGrant.of("threads.create"));
       Entitlement e3 =
           new Entitlement(
               SubjectPattern.recursive("com.worker"), CapabilityGrant.of("native.load"));
@@ -443,7 +443,7 @@ class SerializationTest {
           new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.outbound"));
       Entitlement e2 =
           new Entitlement(
-              SubjectPattern.exactPackage("com.example"), CapabilityGrant.of("threads.spawn"));
+              SubjectPattern.exactPackage("com.example"), CapabilityGrant.of("threads.create"));
       PolicyDescriptor policy = PolicyDescriptor.create("app", List.of(e1, e2));
 
       String json1 = JsonPolicyWriter.toJson(policy);
@@ -467,7 +467,7 @@ class SerializationTest {
           new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.outbound"));
       Entitlement e2 =
           new Entitlement(
-              SubjectPattern.exactPackage("com.example"), CapabilityGrant.of("threads.spawn"));
+              SubjectPattern.exactPackage("com.example"), CapabilityGrant.of("threads.create"));
       Entitlement e3 =
           new Entitlement(
               SubjectPattern.recursive("com.worker"), CapabilityGrant.of("native.load"));
@@ -538,7 +538,7 @@ class SerializationTest {
           new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.outbound"));
       Entitlement ePkgA =
           new Entitlement(
-              SubjectPattern.exactPackage("a.pkg"), CapabilityGrant.of("threads.spawn"));
+              SubjectPattern.exactPackage("a.pkg"), CapabilityGrant.of("threads.create"));
       Entitlement ePkgZ =
           new Entitlement(SubjectPattern.exactPackage("z.pkg"), CapabilityGrant.of("native.load"));
 
@@ -616,7 +616,7 @@ class SerializationTest {
     void readsRecursiveSubject() throws IOException {
       Entitlement entitlement =
           new Entitlement(
-              SubjectPattern.recursive("com.worker"), CapabilityGrant.of("threads.spawn"));
+              SubjectPattern.recursive("com.worker"), CapabilityGrant.of("threads.create"));
       PolicyDescriptor original = PolicyDescriptor.create("app", List.of(entitlement));
 
       byte[] bytes = BinaryPolicyWriter.toBytes(original);
@@ -671,7 +671,7 @@ class SerializationTest {
           new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.outbound"));
       Entitlement e2 =
           new Entitlement(
-              SubjectPattern.exactPackage("com.example"), CapabilityGrant.of("threads.spawn"));
+              SubjectPattern.exactPackage("com.example"), CapabilityGrant.of("threads.create"));
       Entitlement e3 =
           new Entitlement(
               SubjectPattern.recursive("com.worker"), CapabilityGrant.of("native.load"));
@@ -698,7 +698,7 @@ class SerializationTest {
       Entitlement e2 = new Entitlement(SubjectPattern.exactPackage("com.example.net"), listen);
       Entitlement e3 =
           new Entitlement(
-              SubjectPattern.recursive("com.worker"), CapabilityGrant.of("threads.spawn"));
+              SubjectPattern.recursive("com.worker"), CapabilityGrant.of("threads.create"));
       PolicyDescriptor original = PolicyDescriptor.create("com.example.app", List.of(e1, e2, e3));
 
       byte[] bytes = BinaryPolicyWriter.toBytes(original);
@@ -748,7 +748,7 @@ class SerializationTest {
       Entitlement e2 = new Entitlement(SubjectPattern.exactPackage("com.example.net"), listen);
       Entitlement e3 =
           new Entitlement(
-              SubjectPattern.recursive("com.worker"), CapabilityGrant.of("threads.spawn"));
+              SubjectPattern.recursive("com.worker"), CapabilityGrant.of("threads.create"));
 
       PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(e1, e2, e3));
 

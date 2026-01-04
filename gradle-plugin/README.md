@@ -26,13 +26,12 @@ includeBuild("../jguard")
 1. Create a policy file at `src/main/java/module-info.jguard`:
 
 ```
-module com.example.myapp {
-    // Grant filesystem read access to source directories
-    grant {
-        package com.example.myapp {
-            fs.read("src", "**/*");
-        }
-    }
+security module com.example.myapp {
+    // Grant filesystem read access to the entire module
+    entitle module to fs.read("src", "**/*");
+
+    // Grant network access to specific packages
+    entitle com.example.myapp.http.. to network.outbound;
 }
 ```
 

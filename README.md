@@ -130,8 +130,8 @@ Examples include:
 * `fs.write(root, glob)` — write files matching glob pattern under root
 * `network.outbound` — open outbound network connections
 * `network.listen` — bind server sockets to ports
-* `threads.create` — create new threads (planned)
-* `native.load` — load native libraries (planned)
+* `threads.create` — create new threads
+* `native.load` — load native libraries
 
 Capabilities are intentionally narrow and composable.
 
@@ -201,13 +201,13 @@ dependencies {
 Create `src/main/java/module-info.jguard`:
 
 ```text
-module com.example.myapp {
-    grant {
-        package com.example.myapp {
-            fs.read("src", "**/*");
-            fs.read("config", "*.properties");
-        }
-    }
+security module com.example.myapp {
+    // Grant filesystem read access to all code in the module
+    entitle module to fs.read("src", "**/*");
+    entitle module to fs.read("config", "*.properties");
+
+    // Grant network access only to specific packages
+    entitle com.example.myapp.http.. to network.outbound;
 }
 ```
 
@@ -245,21 +245,19 @@ See [agent/README.md](agent/README.md) for full agent documentation and [gradle-
 
 ## Status
 
-jGuard is under active development with production-hardened enforcement.
+jGuard is ready for production use with comprehensive enforcement.
 
 Completed:
 
 * Stable policy model with deterministic compilation
 * Comprehensive filesystem enforcement (`fs.read`, `fs.write`)
 * Network enforcement (`network.outbound`, `network.listen`)
+* Thread creation enforcement (`threads.create`)
+* Native library loading enforcement (`native.load`)
+* Policy hot reload (update entitlements without restart)
 * Clear failure semantics with configurable modes (STRICT, PERMISSIVE, AUDIT)
 * Strong JPMS integration with module verification
 * Single dispatch architecture for efficient capability checking
-
-In progress:
-
-* Thread management capabilities (`threads.create`)
-* Native library loading (`native.load`)
 
 ---
 

@@ -64,3 +64,8 @@ tasks.named("runWithAgent") {
   def jguardBuild = gradle.includedBuild("jguard")
   dependsOn(jguardBuild.task(":agent:jar"))
 }
+
+// Note: Enforcement testing is done via runWithAgent, not via a test task.
+// The jGuard agent conflicts with Gradle's test infrastructure because it
+// instruments classloaders, which interferes with Gradle's test workers.
+// Use: ./gradlew runWithAgent to see enforcement in action.

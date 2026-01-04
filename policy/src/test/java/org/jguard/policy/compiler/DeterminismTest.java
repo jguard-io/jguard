@@ -75,14 +75,14 @@ class DeterminismTest {
             security module com.example.app {
                 entitle module to fs.read("/data", "*.json");
                 entitle com.example.app.http to network.outbound;
-                entitle com.example.app.worker.. to threads.spawn;
+                entitle com.example.app.worker.. to threads.create;
             }
             """;
 
     String source2 =
         """
             security module com.example.app {
-                entitle com.example.app.worker.. to threads.spawn;
+                entitle com.example.app.worker.. to threads.create;
                 entitle module to fs.read("/data", "*.json");
                 entitle com.example.app.http to network.outbound;
             }

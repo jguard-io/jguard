@@ -15,9 +15,13 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.jguard.core.JGuard;
+import org.jguard.samples.sandbox.nativelib.NativeLoader;
 import org.jguard.samples.sandbox.net.NetworkClient;
 import org.jguard.samples.sandbox.net.NetworkServer;
+import org.jguard.samples.sandbox.worker.BackgroundWorker;
 
 /**
  * Demonstrates jGuard capability-based security enforcement.
@@ -31,6 +35,8 @@ import org.jguard.samples.sandbox.net.NetworkServer;
  *   <li>network.outbound - outbound network connections (from org.jguard.samples.sandbox.net
  *       package)
  *   <li>network.listen - server socket binding (from org.jguard.samples.sandbox.net package)
+ *   <li>threads.create - thread creation (from org.jguard.samples.sandbox.worker package)
+ *   <li>native.load - native library loading (from org.jguard.samples.sandbox.nativelib package)
  * </ul>
  *
  * <h2>Running without the agent (no enforcement):</h2>
@@ -104,6 +110,26 @@ public final class Main {
 
     // Test 12: Server socket from non-entitled package (NOT ENTITLED)
     demonstrateUnentitledNetworkListenAccess();
+
+    // === THREAD TESTS ===
+    System.out.println("--- THREAD TESTS ---");
+    System.out.println();
+
+    // Test 13: Thread creation from entitled package (ENTITLED)
+    demonstrateEntitledThreadAccess();
+
+    // Test 14: Thread creation from non-entitled package (NOT ENTITLED)
+    demonstrateUnentitledThreadAccess();
+
+    // === NATIVE LIBRARY TESTS ===
+    System.out.println("--- NATIVE LIBRARY TESTS ---");
+    System.out.println();
+
+    // Test 15: Native library load from entitled package (ENTITLED)
+    demonstrateEntitledNativeAccess();
+
+    // Test 16: Native library load from non-entitled package (NOT ENTITLED)
+    demonstrateUnentitledNativeAccess();
   }
 
   /**
@@ -417,6 +443,112 @@ public final class Main {
       System.out.println("  BLOCKED (expected): " + e.getMessage());
     } catch (IOException e) {
       System.out.println("  ERROR: " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates thread creation from entitled package.
+   *
+   * <p>This operation IS entitled because it's called from the .worker package which has
+   * threads.create entitlement.
+   */
+  private static void demonstrateEntitledThreadAccess() {
+    System.out.println("[ENTITLED] threads.create (from .worker package)");
+    System.out.println("  Attempting to spawn a background task...");
+
+    try (BackgroundWorker worker = new BackgroundWorker()) {
+      // This call creates a thread FROM the BackgroundWorker class in the .worker package
+      // which HAS threads.create entitlement
+      Future<String> future = worker.submit(() -> "Hello from background thread!");
+      String result = future.get(5, TimeUnit.SECONDS);
+      System.out.println("  SUCCESS: Background task returned: " + result);
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (unexpected): " + e.getMessage());
+    } catch (Exception e) {
+      System.out.println("  ERROR: " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates thread creation from non-entitled package.
+   *
+   * <p>This operation is NOT entitled because Main is in the sandbox package, not the .worker
+   * package. It should be blocked when the agent is active.
+   */
+  private static void demonstrateUnentitledThreadAccess() {
+    System.out.println("[NOT ENTITLED] threads.create (from main package)");
+    System.out.println("  Attempting to start a thread directly...");
+
+    try {
+      // This call is made FROM this class (Main) which is in the .sandbox package
+      // which does NOT have threads.create entitlement
+      Thread thread = new Thread(() -> System.out.println("  Thread running!"));
+      thread.start();
+      thread.join(1000);
+      System.out.println("  SUCCESS: Thread started and completed (unexpected!)");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (expected): " + e.getMessage());
+    } catch (InterruptedException e) {
+      System.out.println("  ERROR: " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates native library loading from entitled package.
+   *
+   * <p>This operation IS entitled because it's called from the .nativelib package which has
+   * native.load entitlement.
+   */
+  private static void demonstrateEntitledNativeAccess() {
+    System.out.println("[ENTITLED] native.load (from .nativelib package)");
+    System.out.println("  Attempting to load a native library...");
+
+    try {
+      // This call is made FROM the NativeLoader class in the .nativelib package
+      // which HAS native.load entitlement
+      // Note: The library doesn't actually need to exist - we just test if the
+      // operation is allowed before it fails with UnsatisfiedLinkError
+      NativeLoader.tryLoadLibrary("nonexistent_test_lib");
+      System.out.println("  SUCCESS: Library load attempt allowed");
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (unexpected): " + e.getMessage());
+    } catch (UnsatisfiedLinkError e) {
+      // This is expected - the library doesn't exist, but the operation was allowed
+      System.out.println("  SUCCESS: Load attempt allowed (library not found, as expected)");
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates native library loading from non-entitled package.
+   *
+   * <p>This operation is NOT entitled because Main is in the sandbox package, not the .nativelib
+   * package. It should be blocked when the agent is active.
+   */
+  private static void demonstrateUnentitledNativeAccess() {
+    System.out.println("[NOT ENTITLED] native.load (from main package)");
+    System.out.println("  Attempting to load a native library directly...");
+
+    try {
+      // This call is made FROM this class (Main) which is in the .sandbox package
+      // which does NOT have native.load entitlement
+      System.loadLibrary("nonexistent_test_lib");
+      System.out.println("  SUCCESS: Library loaded (unexpected!)");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (expected): " + e.getMessage());
+    } catch (UnsatisfiedLinkError e) {
+      // Library doesn't exist but operation was allowed - unexpected!
+      System.out.println("  SUCCESS: Load attempt allowed (library not found)");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
     }
 
     System.out.println();

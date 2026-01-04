@@ -165,7 +165,7 @@ class PolicyValidatorTest {
 
     @Test
     void acceptsThreadsSpawn() {
-      EntitlementDeclaration entitlement = moduleEntitlement("threads.spawn");
+      EntitlementDeclaration entitlement = moduleEntitlement("threads.create");
       PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
 
       PolicyValidator.ValidationResult result = validate(ast);

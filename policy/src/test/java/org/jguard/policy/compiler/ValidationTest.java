@@ -97,7 +97,7 @@ class ValidationTest {
                 entitle module to fs.write("/tmp", "*.log");
                 entitle module to network.outbound;
                 entitle module to network.listen(8080);
-                entitle module to threads.spawn;
+                entitle module to threads.create;
                 entitle module to native.load;
             }
             """;
@@ -116,7 +116,7 @@ class ValidationTest {
                 entitle module to network.outbound;
                 entitle com.example.app.http to network.outbound;
                 entitle com.example.app.handlers.* to network.outbound;
-                entitle com.example.app.worker.. to threads.spawn;
+                entitle com.example.app.worker.. to threads.create;
             }
             """;
 

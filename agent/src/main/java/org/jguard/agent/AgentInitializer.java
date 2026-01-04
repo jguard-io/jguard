@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicReference;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
@@ -46,8 +47,9 @@ public final class AgentInitializer {
 
   private static final AgentLogger LOG = AgentLogger.getLogger(AgentInitializer.class);
 
-  private static volatile PolicyEnforcer enforcer;
+  private static final AtomicReference<PolicyEnforcer> enforcerRef = new AtomicReference<>();
   private static volatile AgentConfig config;
+  private static volatile PolicyReloader reloader;
   private static volatile boolean initialized;
 
   private AgentInitializer() {}
@@ -70,7 +72,8 @@ public final class AgentInitializer {
 
     // Load policy
     PolicyDescriptor policy = loadPolicy(config.policyPath());
-    enforcer = new PolicyEnforcer(policy, config);
+    PolicyEnforcer enforcer = new PolicyEnforcer(policy, config);
+    enforcerRef.set(enforcer);
 
     // Configure the bootstrap enforcer
     configureBootstrapEnforcer();
@@ -78,11 +81,20 @@ public final class AgentInitializer {
     // Install instrumentation
     installInstrumentation(inst);
 
+    // Start hot reload if enabled
+    if (config.hotReloadEnabled()) {
+      reloader =
+          new PolicyReloader(
+              config.policyPath(), enforcerRef, config, config.hotReloadIntervalSeconds());
+      reloader.start();
+    }
+
     initialized = true;
     LOG.info(
-        "jGuard agent initialized successfully for module: {} (mode={})",
+        "jGuard agent initialized successfully for module: {} (mode={}, hotReload={})",
         policy.moduleName(),
-        config.mode());
+        config.mode(),
+        config.hotReloadEnabled());
   }
 
   /**
@@ -118,11 +130,14 @@ public final class AgentInitializer {
    * runtime. The agent compiles against bootstrap types (compileOnly) but doesn't package them. At
    * runtime, when agent code references org.jguard.bootstrap.*, the app classloader delegates to
    * the bootstrap classloader, which finds the classes from the injected bootstrap.jar.
+   *
+   * <p>The callback uses enforcerRef.get() to support hot reload - when the policy is reloaded, the
+   * new PolicyEnforcer is swapped into the AtomicReference and subsequent calls will use it.
    */
   private static void configureBootstrapEnforcer() {
-    // Direct lambda - works because bootstrap types have single identity
+    // Direct lambda using AtomicReference for hot reload support
     org.jguard.bootstrap.EnforcementCallback callback =
-        (caller, op, arg0, arg1) -> enforcer.check(caller, op, arg0, arg1);
+        (caller, op, arg0, arg1) -> enforcerRef.get().check(caller, op, arg0, arg1);
 
     org.jguard.bootstrap.BootstrapEnforcer.setCallback(callback);
     org.jguard.bootstrap.BootstrapEnforcer.setMode(config.mode());
@@ -343,6 +358,37 @@ public final class AgentInitializer {
                 builder.visit(
                     Advice.to(NetworkInterceptor.ServerSocketChannelBindAdvice.class)
                         .on(named("bind").and(takesArgument(0, java.net.SocketAddress.class)))))
+        // ========== THREAD INSTRUMENTATION (threads.create) ==========
+        // Instrument java.lang.Thread - thread creation
+        .type(named("java.lang.Thread"))
+        .transform(
+            (builder, typeDescription, classLoader, module, protectionDomain) ->
+                builder.visit(
+                    Advice.to(ThreadInterceptor.ThreadStartAdvice.class)
+                        .on(named("start").and(takesArguments(0)))))
+        // ========== NATIVE LIBRARY INSTRUMENTATION (native.load) ==========
+        // Instrument java.lang.System - native library loading
+        .type(named("java.lang.System"))
+        .transform(
+            (builder, typeDescription, classLoader, module, protectionDomain) ->
+                builder
+                    .visit(
+                        Advice.to(NativeInterceptor.LoadLibraryAdvice.class)
+                            .on(named("loadLibrary").and(takesArgument(0, String.class))))
+                    .visit(
+                        Advice.to(NativeInterceptor.LoadAdvice.class)
+                            .on(named("load").and(takesArgument(0, String.class)))))
+        // Instrument java.lang.Runtime - native library loading (delegates to System)
+        .type(named("java.lang.Runtime"))
+        .transform(
+            (builder, typeDescription, classLoader, module, protectionDomain) ->
+                builder
+                    .visit(
+                        Advice.to(NativeInterceptor.LoadLibraryAdvice.class)
+                            .on(named("loadLibrary").and(takesArgument(0, String.class))))
+                    .visit(
+                        Advice.to(NativeInterceptor.LoadAdvice.class)
+                            .on(named("load").and(takesArgument(0, String.class)))))
         .installOn(inst);
 
     LOG.debug("Instrumentation installed");

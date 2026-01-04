@@ -407,6 +407,265 @@ class PolicyEnforcerTest {
     }
   }
 
+  @Nested
+  @DisplayName("SIMPLE category operations (threads.create, network.outbound)")
+  class SimpleOperationTest {
+
+    @Test
+    @DisplayName("allows threads.create when module is entitled")
+    void allowsThreadsCreate() {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("threads.create"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatCode(
+              () -> checkOperation(enforcer, caller("com.example.app"), Operation.THREAD_CREATE))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("denies threads.create when not entitled")
+    void deniesThreadsCreate() {
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of());
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatThrownBy(
+              () -> checkOperation(enforcer, caller("com.example.app"), Operation.THREAD_CREATE))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("threads.create");
+    }
+
+    @Test
+    @DisplayName("allows network.outbound when entitled")
+    void allowsNetworkOutbound() {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.outbound"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatCode(
+              () -> checkOperation(enforcer, caller("com.example.app"), Operation.NET_CONNECT))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("denies network.outbound when not entitled")
+    void deniesNetworkOutbound() {
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of());
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatThrownBy(
+              () -> checkOperation(enforcer, caller("com.example.app"), Operation.NET_CONNECT))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("network.outbound");
+    }
+
+    @Test
+    @DisplayName("respects package scope for threads.create")
+    void respectsPackageScopeForThreadsCreate() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.exactPackage("com.example.app.worker"),
+              CapabilityGrant.of("threads.create"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Entitled package allowed
+      assertThatCode(
+              () ->
+                  checkOperation(
+                      enforcer, caller("com.example.app.worker"), Operation.THREAD_CREATE))
+          .doesNotThrowAnyException();
+
+      // Other packages denied
+      assertThatThrownBy(
+              () -> checkOperation(enforcer, caller("com.example.app"), Operation.THREAD_CREATE))
+          .isInstanceOf(SecurityException.class);
+    }
+  }
+
+  @Nested
+  @DisplayName("TARGET_PATTERN category operations (native.load)")
+  class TargetPatternOperationTest {
+
+    @Test
+    @DisplayName("allows native.load when entitled with no pattern restriction")
+    void allowsNativeLoadAnyTarget() {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("native.load"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Any library should be allowed
+      assertThatCode(() -> checkNativeLoad(enforcer, caller("com.example.app"), "libcrypto"))
+          .doesNotThrowAnyException();
+      assertThatCode(() -> checkNativeLoad(enforcer, caller("com.example.app"), "libssl"))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("denies native.load when not entitled")
+    void deniesNativeLoad() {
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of());
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatThrownBy(() -> checkNativeLoad(enforcer, caller("com.example.app"), "libnative"))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("native.load");
+    }
+
+    @Test
+    @DisplayName("allows native.load with exact pattern match")
+    void allowsNativeLoadExactPattern() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "native.load", List.of(new CapabilityArgument.StringArg("libcrypto"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Exact match allowed
+      assertThatCode(() -> checkNativeLoad(enforcer, caller("com.example.app"), "libcrypto"))
+          .doesNotThrowAnyException();
+
+      // Non-matching denied
+      assertThatThrownBy(() -> checkNativeLoad(enforcer, caller("com.example.app"), "libssl"))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("allows native.load with wildcard pattern")
+    void allowsNativeLoadWildcardPattern() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "native.load", List.of(new CapabilityArgument.StringArg("lib.*"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Direct children of lib. pattern allowed
+      assertThatCode(() -> checkNativeLoad(enforcer, caller("com.example.app"), "lib.crypto"))
+          .doesNotThrowAnyException();
+
+      // lib.sub.foo would NOT match (only one segment after lib.)
+      assertThatThrownBy(() -> checkNativeLoad(enforcer, caller("com.example.app"), "lib.sub.foo"))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("allows native.load with recursive pattern")
+    void allowsNativeLoadRecursivePattern() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "native.load", List.of(new CapabilityArgument.StringArg("lib.**"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // All descendants of lib allowed
+      assertThatCode(() -> checkNativeLoad(enforcer, caller("com.example.app"), "lib.crypto"))
+          .doesNotThrowAnyException();
+      assertThatCode(() -> checkNativeLoad(enforcer, caller("com.example.app"), "lib.sub.deep.foo"))
+          .doesNotThrowAnyException();
+
+      // Non-matching denied
+      assertThatThrownBy(() -> checkNativeLoad(enforcer, caller("com.example.app"), "other.lib"))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("respects package scope for native.load")
+    void respectsPackageScopeForNativeLoad() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.exactPackage("com.example.app.native"),
+              CapabilityGrant.of("native.load"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Entitled package allowed
+      assertThatCode(() -> checkNativeLoad(enforcer, caller("com.example.app.native"), "libfoo"))
+          .doesNotThrowAnyException();
+
+      // Other packages denied
+      assertThatThrownBy(() -> checkNativeLoad(enforcer, caller("com.example.app"), "libfoo"))
+          .isInstanceOf(SecurityException.class);
+    }
+  }
+
+  @Nested
+  @DisplayName("PORT category operations (network.listen)")
+  class PortOperationTest {
+
+    @Test
+    @DisplayName("allows network.listen when entitled with no port restriction")
+    void allowsNetworkListenAnyPort() {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.listen"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Any port should be allowed
+      assertThatCode(() -> checkNetworkListen(enforcer, caller("com.example.app"), 8080))
+          .doesNotThrowAnyException();
+      assertThatCode(() -> checkNetworkListen(enforcer, caller("com.example.app"), 443))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("denies network.listen when not entitled")
+    void deniesNetworkListen() {
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of());
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatThrownBy(() -> checkNetworkListen(enforcer, caller("com.example.app"), 8080))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("network.listen");
+    }
+
+    @Test
+    @DisplayName("allows network.listen with specific port restriction")
+    void allowsNetworkListenSpecificPort() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.listen", List.of(new CapabilityArgument.IntegerArg(8080))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Exact port match allowed
+      assertThatCode(() -> checkNetworkListen(enforcer, caller("com.example.app"), 8080))
+          .doesNotThrowAnyException();
+
+      // Ephemeral port (0) allowed with any entitlement
+      assertThatCode(() -> checkNetworkListen(enforcer, caller("com.example.app"), 0))
+          .doesNotThrowAnyException();
+
+      // Different port denied
+      assertThatThrownBy(() -> checkNetworkListen(enforcer, caller("com.example.app"), 9090))
+          .isInstanceOf(SecurityException.class);
+    }
+  }
+
   // ===== Helper methods =====
 
   private Entitlement fsReadEntitlement(String root, String glob) {
@@ -449,6 +708,31 @@ class PolicyEnforcerTest {
   /** Helper to call check() and throw if denied, for test readability. */
   private static void checkFsRead(PolicyEnforcer enforcer, CallerContext caller, Path path) {
     SecurityException denial = enforcer.check(caller, Operation.FS_READ, path, 0);
+    if (denial != null) {
+      throw denial;
+    }
+  }
+
+  /** Helper for SIMPLE category operations (threads.create, network.outbound). */
+  private static void checkOperation(PolicyEnforcer enforcer, CallerContext caller, Operation op) {
+    SecurityException denial = enforcer.check(caller, op, "test", 0);
+    if (denial != null) {
+      throw denial;
+    }
+  }
+
+  /** Helper for native.load operations. */
+  private static void checkNativeLoad(
+      PolicyEnforcer enforcer, CallerContext caller, String libraryName) {
+    SecurityException denial = enforcer.check(caller, Operation.NATIVE_LOAD, libraryName, 0);
+    if (denial != null) {
+      throw denial;
+    }
+  }
+
+  /** Helper for network.listen operations. */
+  private static void checkNetworkListen(PolicyEnforcer enforcer, CallerContext caller, int port) {
+    SecurityException denial = enforcer.check(caller, Operation.NET_LISTEN, null, port);
     if (denial != null) {
       throw denial;
     }
