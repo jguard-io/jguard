@@ -29,7 +29,7 @@ import org.jguard.policy.model.SubjectPattern;
  * PolicyDescriptor policy = JGuardPolicy.forModule("com.example.app")
  *     .grant(module(), fsRead("/data", "*.json"))
  *     .grant(pkg("com.example.app.net"), networkOutbound())
- *     .grant(pkgRecursive("com.example.app.worker"), threadsSpawn())
+ *     .grant(pkgRecursive("com.example.app.worker"), threadsCreate())
  *     .build();
  * }</pre>
  *
@@ -41,7 +41,7 @@ import org.jguard.policy.model.SubjectPattern;
  * security module com.example.app {
  *     entitle module to fs.read("/data", "*.json");
  *     entitle com.example.app.net to network.outbound;
- *     entitle com.example.app.worker.. to threads.spawn;
+ *     entitle com.example.app.worker.. to threads.create;
  * }
  * }</pre>
  *

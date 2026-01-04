@@ -57,7 +57,7 @@ security module com.example.myapp {
     entitle com.example.myapp.handlers.* to network.listen(8080);
 
     // Grant recursively to package and all descendants
-    entitle com.example.myapp.worker.. to threads.spawn;
+    entitle com.example.myapp.worker.. to threads.create;
 
 }
 ```
@@ -78,9 +78,9 @@ security module com.example.myapp {
 | `fs.read(root, glob)` | 2 strings | Read files under `root` matching `glob` |
 | `fs.write(root, glob)` | 2 strings | Write files under `root` matching `glob` |
 | `network.outbound` | none | Make outbound network connections |
-| `network.listen(port)` | 1 integer | Listen on a specific port |
-| `threads.spawn` | none | Create new threads |
-| `native.load` | none | Load native libraries |
+| `network.listen(port?)` | 0-1 integer | Listen on a specific port (optional) |
+| `threads.create` | none | Create new threads |
+| `native.load(pattern?)` | 0-1 string | Load native libraries (optional pattern) |
 
 ### Lexical Elements
 

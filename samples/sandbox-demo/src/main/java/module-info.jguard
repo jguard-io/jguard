@@ -21,7 +21,10 @@ security module org.jguard.samples.sandbox {
     // Grant network listen to specific packages
     entitle org.jguard.samples.sandbox.net to network.listen;
 
-    // Grant thread spawning to the worker package hierarchy
-    entitle org.jguard.samples.sandbox.worker.. to threads.spawn;
+    // Grant thread creation to the worker package hierarchy
+    entitle org.jguard.samples.sandbox.worker.. to threads.create;
+
+    // Grant native library loading to the nativelib package
+    entitle org.jguard.samples.sandbox.nativelib.. to native.load;
 
 }

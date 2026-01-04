@@ -220,14 +220,33 @@ Each capability has a fixed signature that determines:
 * whether arguments are required
 * the type and meaning of each argument
 
-For example:
+The following capabilities are defined in jGuard version 1:
 
-| Capability         | Signature      |
-| ------------------ | -------------- |
-| `network.outbound` | no arguments   |
-| `fs.read`          | `(root, glob)` |
+| Capability         | Signature                | Description                              |
+| ------------------ | ------------------------ | ---------------------------------------- |
+| `fs.read`          | `(root, glob)`           | Read files matching glob under root      |
+| `fs.write`         | `(root, glob)`           | Write files matching glob under root     |
+| `network.outbound` | (no arguments)           | Open outbound network connections        |
+| `network.listen`   | `(port?)`                | Bind server sockets (optional port)      |
+| `threads.create`   | (no arguments)           | Create new threads                       |
+| `native.load`      | `(pattern?)`             | Load native libraries (optional pattern) |
 
-Implementations MUST reject entitlement declarations whose arguments do not conform to the capability’s signature.
+#### Argument details
+
+**`fs.read(root, glob)` / `fs.write(root, glob)`**
+
+* `root` — base directory path (string)
+* `glob` — glob pattern for matching files (string, e.g., `"**/*"`, `"*.txt"`)
+
+**`network.listen(port?)`**
+
+* `port` — optional port number (integer); if omitted, allows binding to any port
+
+**`native.load(pattern?)`**
+
+* `pattern` — optional library name pattern (string); if omitted, allows loading any library
+
+Implementations MUST reject entitlement declarations whose arguments do not conform to the capability's signature.
 
 ### 6.2 Accumulation of entitlements
 

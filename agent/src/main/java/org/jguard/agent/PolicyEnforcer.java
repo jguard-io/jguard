@@ -49,6 +49,15 @@ public final class PolicyEnforcer {
     LOG.info("PolicyEnforcer initialized for module: {}", moduleName);
   }
 
+  /**
+   * Returns the module name this enforcer is configured for.
+   *
+   * @return the module name
+   */
+  public String getModuleName() {
+    return moduleName;
+  }
+
   // ========== SINGLE DISPATCH ENTRY POINT ==========
 
   /**

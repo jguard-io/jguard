@@ -176,7 +176,7 @@ The compiler validates that only known capabilities are used:
 | `fs.write` | `(root, glob)` | Write files matching glob under root |
 | `network.outbound` | none | Make outbound network connections |
 | `network.listen` | `(port)` | Listen on a port |
-| `threads.spawn` | none | Spawn new threads |
+| `threads.create` | none | Spawn new threads |
 | `native.load` | none | Load native libraries |
 
 ### See Also

@@ -92,12 +92,12 @@ public final class Capabilities {
   // ===== Thread Capabilities =====
 
   /**
-   * Creates a thread spawn capability.
+   * Creates a thread creation capability.
    *
    * @return the capability grant
    */
-  public static CapabilityGrant threadsSpawn() {
-    return CapabilityGrant.of("threads.spawn");
+  public static CapabilityGrant threadsCreate() {
+    return CapabilityGrant.of("threads.create");
   }
 
   // ===== Native Capabilities =====

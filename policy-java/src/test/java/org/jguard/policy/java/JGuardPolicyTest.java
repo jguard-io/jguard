@@ -78,7 +78,7 @@ class JGuardPolicyTest {
           JGuardPolicy.forModule("com.example.app")
               .grant(module(), networkOutbound())
               .grant(pkg("com.example.net"), fsRead("/tmp", "*"))
-              .grant(pkgRecursive("com.example.worker"), threadsSpawn());
+              .grant(pkgRecursive("com.example.worker"), threadsCreate());
 
       assertThat(builder.entitlementCount()).isEqualTo(3);
     }

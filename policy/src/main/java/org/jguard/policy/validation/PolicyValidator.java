@@ -39,15 +39,15 @@ public final class PolicyValidator {
   private static final Pattern JAVA_IDENTIFIER = Pattern.compile("^[a-zA-Z_][a-zA-Z0-9_]*$");
 
   // Known capabilities and their expected argument counts
-  // For v0.1.0: fs.read(root, glob) and network.outbound
+  // For v0.1.0: fs.read/write, network.outbound/listen, threads.create, native.load
   private static final Map<String, CapabilitySignature> KNOWN_CAPABILITIES =
       Map.of(
           "fs.read", new CapabilitySignature(2, 2, List.of(ArgType.STRING, ArgType.STRING)),
           "fs.write", new CapabilitySignature(2, 2, List.of(ArgType.STRING, ArgType.STRING)),
           "network.outbound", new CapabilitySignature(0, 0, List.of()),
           "network.listen", new CapabilitySignature(0, 1, List.of(ArgType.INTEGER)),
-          "threads.spawn", new CapabilitySignature(0, 0, List.of()),
-          "native.load", new CapabilitySignature(0, 0, List.of()));
+          "threads.create", new CapabilitySignature(0, 0, List.of()),
+          "native.load", new CapabilitySignature(0, 1, List.of(ArgType.STRING)));
 
   private final String sourcePath;
   private final List<CompilationResult.Diagnostic> diagnostics = new ArrayList<>();

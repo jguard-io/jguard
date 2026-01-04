@@ -67,6 +67,8 @@ This separation enables:
 | `jguard.log.level` | error/warn/info/debug/trace | info | Log verbosity |
 | `jguard.log.denied` | true/false | true | Log denied operations |
 | `jguard.log.allowed` | true/false | false | Log allowed operations |
+| `jguard.reload` | true/false | false | Enable policy hot reload |
+| `jguard.reload.interval` | seconds | 5 | Hot reload poll interval |
 
 ### Enforcement Modes
 
@@ -183,6 +185,30 @@ NIO server socket binding is instrumented:
 
 - `ServerSocketChannel.bind(SocketAddress)`
 
+## Instrumented Classes (Thread Creation)
+
+### java.lang.Thread
+
+Thread creation is instrumented:
+
+- `Thread.start()`
+
+## Instrumented Classes (Native Library Loading)
+
+### java.lang.System
+
+Native library loading is instrumented:
+
+- `System.loadLibrary(String)`
+- `System.load(String)`
+
+### java.lang.Runtime
+
+Runtime native loading is instrumented:
+
+- `Runtime.loadLibrary(String)`
+- `Runtime.load(String)`
+
 ## Limitations
 
 ### Current Scope
@@ -193,9 +219,6 @@ The following capabilities are fully enforced:
 - `fs.write` — filesystem write operations
 - `network.outbound` — outbound socket connections
 - `network.listen` — server socket binding
-
-### Not Yet Implemented
-
 - `threads.create` — thread creation
 - `native.load` — native library loading
 
@@ -223,6 +246,26 @@ cd samples/sandbox-demo
 ../../gradlew runWithAgent
 ```
 
+## Policy Hot Reload
+
+Enable hot reload to update entitlements without restarting the JVM:
+
+```bash
+java -javaagent:jguard-agent.jar=/etc/myapp/policy.bin \
+     -Djguard.reload=true \
+     -Djguard.reload.interval=5 \
+     -jar myapp.jar
+```
+
+When enabled, the agent polls the policy file for changes. When a change is detected:
+
+1. New policy is loaded from disk
+2. PolicyEnforcer is atomically swapped
+3. Decision cache is cleared
+4. Subsequent operations use new entitlements
+
+This enables zero-downtime policy updates in production environments.
+
 ## Production Deployment
 
 The agent is designed for production use with:
@@ -231,3 +274,4 @@ The agent is designed for production use with:
 - **Built-in Logging**: Simple console logger with no external dependencies
 - **Graceful Error Handling**: Configurable behavior for errors and edge cases
 - **Shadow JAR Isolation**: ByteBuddy and ASM are relocated to avoid classpath conflicts
+- **Policy Hot Reload**: Update entitlements without JVM restart

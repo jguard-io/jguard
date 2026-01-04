@@ -110,13 +110,13 @@ class ParityTest {
       String jguardSource =
           """
           security module com.example.app {
-              entitle com.example.worker.. to threads.spawn;
+              entitle com.example.worker.. to threads.create;
           }
           """;
 
       PolicyDescriptor javaPolicy =
           JGuardPolicy.forModule("com.example.app")
-              .grant(pkgRecursive("com.example.worker"), threadsSpawn())
+              .grant(pkgRecursive("com.example.worker"), threadsCreate())
               .build();
 
       assertBinaryParity(jguardSource, javaPolicy);
@@ -130,7 +130,7 @@ class ParityTest {
           security module com.example.app {
               entitle module to fs.read("/data", "*.json");
               entitle com.example.app.net to network.outbound;
-              entitle com.example.app.worker.. to threads.spawn;
+              entitle com.example.app.worker.. to threads.create;
               entitle com.example.app.jni to native.load;
           }
           """;
@@ -139,7 +139,7 @@ class ParityTest {
           JGuardPolicy.forModule("com.example.app")
               .grant(module(), fsRead("/data", "*.json"))
               .grant(pkg("com.example.app.net"), networkOutbound())
-              .grant(pkgRecursive("com.example.app.worker"), threadsSpawn())
+              .grant(pkgRecursive("com.example.app.worker"), threadsCreate())
               .grant(pkg("com.example.app.jni"), nativeLoad())
               .build();
 
@@ -153,7 +153,7 @@ class ParityTest {
       String jguardSource =
           """
           security module com.example.app {
-              entitle com.example.app.worker.. to threads.spawn;
+              entitle com.example.app.worker.. to threads.create;
               entitle module to network.outbound;
               entitle com.example.app.net to fs.read("/tmp", "*");
           }
@@ -164,7 +164,7 @@ class ParityTest {
           JGuardPolicy.forModule("com.example.app")
               .grant(pkg("com.example.app.net"), fsRead("/tmp", "*"))
               .grant(module(), networkOutbound())
-              .grant(pkgRecursive("com.example.app.worker"), threadsSpawn())
+              .grant(pkgRecursive("com.example.app.worker"), threadsCreate())
               .build();
 
       assertBinaryParity(jguardSource, javaPolicy);
@@ -185,7 +185,7 @@ class ParityTest {
               entitle module to fs.write("/tmp", "*.log");
               entitle com.example.app.net to network.outbound;
               entitle com.example.app.server.* to network.listen(8080);
-              entitle com.example.app.worker.. to threads.spawn;
+              entitle com.example.app.worker.. to threads.create;
               entitle com.example.app.jni to native.load;
           }
           """;
@@ -196,7 +196,7 @@ class ParityTest {
               .grant(module(), fsWrite("/tmp", "*.log"))
               .grant(pkg("com.example.app.net"), networkOutbound())
               .grant(pkgChildren("com.example.app.server"), networkListen(8080))
-              .grant(pkgRecursive("com.example.app.worker"), threadsSpawn())
+              .grant(pkgRecursive("com.example.app.worker"), threadsCreate())
               .grant(pkg("com.example.app.jni"), nativeLoad())
               .build();
 

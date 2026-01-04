@@ -258,6 +258,28 @@ public final class BootstrapEnforcer {
     dispatch(Operation.NET_LISTEN, null, address != null ? address.getPort() : 0);
   }
 
+  // ========== THREAD CREATION ENTRY POINTS ==========
+
+  /**
+   * Called by ByteBuddy advice when a thread is being started.
+   *
+   * @param thread the thread being started
+   */
+  public static void onThreadCreate(Thread thread) {
+    dispatch(Operation.THREAD_CREATE, thread != null ? thread.getName() : "unnamed", 0);
+  }
+
+  // ========== NATIVE LIBRARY ENTRY POINTS ==========
+
+  /**
+   * Called by ByteBuddy advice when a native library is being loaded.
+   *
+   * @param libraryName the name of the library being loaded
+   */
+  public static void onNativeLoad(String libraryName) {
+    dispatch(Operation.NATIVE_LOAD, libraryName != null ? libraryName : "unknown", 0);
+  }
+
   // ========== SINGLE DISPATCH ==========
 
   /**

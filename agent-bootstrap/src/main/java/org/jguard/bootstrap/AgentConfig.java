@@ -23,6 +23,8 @@ import java.nio.file.Path;
  *   <li><b>jguard.log.level</b> (default: info): Log level (error/warn/info/debug/trace)
  *   <li><b>jguard.log.denied</b> (default: true): Log denied operations
  *   <li><b>jguard.log.allowed</b> (default: false): Log allowed operations
+ *   <li><b>jguard.reload</b> (default: false): Enable policy hot reload
+ *   <li><b>jguard.reload.interval</b> (default: 5): Hot reload poll interval in seconds
  * </ul>
  *
  * <h2>Usage</h2>
@@ -41,12 +43,16 @@ public final class AgentConfig {
   private static final String PROP_LOG_LEVEL = "jguard.log.level";
   private static final String PROP_LOG_DENIED = "jguard.log.denied";
   private static final String PROP_LOG_ALLOWED = "jguard.log.allowed";
+  private static final String PROP_RELOAD = "jguard.reload";
+  private static final String PROP_RELOAD_INTERVAL = "jguard.reload.interval";
 
   private final Path policyPath;
   private final EnforcementMode mode;
   private final AgentLogger.Level logLevel;
   private final boolean logDenied;
   private final boolean logAllowed;
+  private final boolean hotReloadEnabled;
+  private final long hotReloadIntervalSeconds;
 
   private AgentConfig(Builder builder) {
     this.policyPath = builder.policyPath;
@@ -54,6 +60,8 @@ public final class AgentConfig {
     this.logLevel = builder.logLevel;
     this.logDenied = builder.logDenied;
     this.logAllowed = builder.logAllowed;
+    this.hotReloadEnabled = builder.hotReloadEnabled;
+    this.hotReloadIntervalSeconds = builder.hotReloadIntervalSeconds;
   }
 
   /**
@@ -108,6 +116,22 @@ public final class AgentConfig {
       builder.logAllowed(Boolean.parseBoolean(logAllowedStr));
     }
 
+    // Hot reload
+    String reloadStr = System.getProperty(PROP_RELOAD);
+    if (reloadStr != null) {
+      builder.hotReloadEnabled(Boolean.parseBoolean(reloadStr));
+    }
+
+    // Hot reload interval
+    String reloadIntervalStr = System.getProperty(PROP_RELOAD_INTERVAL);
+    if (reloadIntervalStr != null && !reloadIntervalStr.isBlank()) {
+      try {
+        builder.hotReloadIntervalSeconds(Long.parseLong(reloadIntervalStr));
+      } catch (NumberFormatException e) {
+        // Ignore invalid interval, use default
+      }
+    }
+
     return builder.build();
   }
 
@@ -156,6 +180,24 @@ public final class AgentConfig {
     return logAllowed || mode.logsAllowed();
   }
 
+  /**
+   * Returns true if policy hot reload is enabled.
+   *
+   * @return true if hot reload is enabled
+   */
+  public boolean hotReloadEnabled() {
+    return hotReloadEnabled;
+  }
+
+  /**
+   * Returns the hot reload poll interval in seconds.
+   *
+   * @return the poll interval in seconds
+   */
+  public long hotReloadIntervalSeconds() {
+    return hotReloadIntervalSeconds;
+  }
+
   @Override
   public String toString() {
     return "AgentConfig{"
@@ -169,6 +211,10 @@ public final class AgentConfig {
         + logDenied
         + ", logAllowed="
         + logAllowed
+        + ", hotReloadEnabled="
+        + hotReloadEnabled
+        + ", hotReloadIntervalSeconds="
+        + hotReloadIntervalSeconds
         + '}';
   }
 
@@ -179,6 +225,8 @@ public final class AgentConfig {
     private AgentLogger.Level logLevel = AgentLogger.Level.INFO;
     private boolean logDenied = true;
     private boolean logAllowed = false;
+    private boolean hotReloadEnabled = false;
+    private long hotReloadIntervalSeconds = 5;
 
     /** Creates a new Builder with default values. */
     public Builder() {}
@@ -235,6 +283,28 @@ public final class AgentConfig {
      */
     public Builder logAllowed(boolean value) {
       this.logAllowed = value;
+      return this;
+    }
+
+    /**
+     * Sets whether hot reload is enabled.
+     *
+     * @param value true to enable hot reload
+     * @return this builder
+     */
+    public Builder hotReloadEnabled(boolean value) {
+      this.hotReloadEnabled = value;
+      return this;
+    }
+
+    /**
+     * Sets the hot reload poll interval.
+     *
+     * @param seconds the poll interval in seconds
+     * @return this builder
+     */
+    public Builder hotReloadIntervalSeconds(long seconds) {
+      this.hotReloadIntervalSeconds = seconds;
       return this;
     }
 

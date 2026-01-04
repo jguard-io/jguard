@@ -37,13 +37,13 @@ security module com.example.myapp {
     entitle com.example.myapp.http to network.outbound;
 
     // Grant thread spawning to worker packages
-    entitle com.example.myapp.workers.. to threads.spawn;
+    entitle com.example.myapp.workers.. to threads.create;
 
 }
 ```
 
 The policy file declares:
-- **What** capabilities are granted (`fs.read`, `network.outbound`, `threads.spawn`)
+- **What** capabilities are granted (`fs.read`, `network.outbound`, `threads.create`)
 - **Who** gets them (`module` for everything, or specific packages)
 
 ### 3. Write Your Java Code
@@ -88,9 +88,9 @@ jGuard enforces your policy transparently—if the code is entitled, it runs; if
 | `fs.read(root, glob)` | Read files matching glob under root |
 | `fs.write(root, glob)` | Write files matching glob under root |
 | `network.outbound` | Make outbound network connections |
-| `network.listen(port)` | Listen on a port |
-| `threads.spawn` | Create threads |
-| `native.load` | Load native libraries |
+| `network.listen(port?)` | Listen on a port (optional port arg) |
+| `threads.create` | Create threads |
+| `native.load(pattern?)` | Load native libraries (optional pattern) |
 
 ## What Gets Built
 
@@ -163,9 +163,10 @@ sandbox-demo/
     │   ├── module-info.java          # JPMS module descriptor
     │   ├── module-info.jguard        # jGuard policy (lives next to module-info.java)
     │   └── org/jguard/samples/sandbox/
-    │       ├── Main.java
-    │       ├── net/NetworkClient.java
-    │       └── worker/BackgroundWorker.java
+    │       ├── Main.java             # Demo runner
+    │       ├── net/NetworkClient.java          # Entitled to network.outbound
+    │       ├── worker/BackgroundWorker.java    # Entitled to threads.create
+    │       └── nativelib/NativeLoader.java     # Entitled to native.load
     └── test/java/
         └── org/jguard/samples/sandbox/
             └── EntitlementTest.java

@@ -7,27 +7,32 @@
  */
 package org.jguard.samples.sandbox;
 
-import org.jguard.samples.sandbox.net.NetworkClient;
-import org.jguard.samples.sandbox.worker.BackgroundWorker;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.jguard.samples.sandbox.net.NetworkClient;
+import org.jguard.samples.sandbox.nativelib.NativeLoader;
+import org.jguard.samples.sandbox.worker.BackgroundWorker;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Tests for jGuard entitlement enforcement.
+ * Tests for jGuard entitlement verification.
  *
- * <p>These tests verify that operations succeed when entitled and fail when not.
- * Until enforcement is implemented, they serve as integration tests for the
- * sample code and as a template for enforcement testing.
+ * <p>These tests verify that entitled operations work correctly. To see enforcement (denial) of
+ * unentitled operations, run the Main class with the agent:
+ *
+ * <pre>{@code
+ * ./gradlew runWithAgent
+ * }</pre>
+ *
+ * <p>The Main class demonstrates both entitled and unentitled operations for all capabilities.
  */
 class EntitlementTest {
 
@@ -63,14 +68,6 @@ class EntitlementTest {
             assertThat(content).isEqualTo("hello jguard");
         }
 
-        // TODO: Once enforcement is implemented, add tests for denied operations:
-        // @Test
-        // @DisplayName("module cannot read files outside entitled paths")
-        // void cannotReadOutsideEntitledPaths() {
-        //     assertThatThrownBy(() -> Files.readString(Path.of("/etc/passwd")))
-        //         .isInstanceOf(SecurityException.class)
-        //         .hasMessageContaining("fs.read");
-        // }
     }
 
     @Nested
@@ -91,25 +88,16 @@ class EntitlementTest {
             assertThat(result).isIn(true, false);
         }
 
-        // TODO: Once enforcement is implemented, add tests for denied operations:
-        // @Test
-        // @DisplayName("main package cannot make outbound connections")
-        // void mainPackageCannotConnect() {
-        //     // Code in org.jguard.samples.sandbox (not .net) should be denied
-        //     assertThatThrownBy(() -> makeConnectionFromMainPackage())
-        //         .isInstanceOf(SecurityException.class)
-        //         .hasMessageContaining("network.outbound");
-        // }
     }
 
     @Nested
-    @DisplayName("threads.spawn entitlement")
-    class ThreadsSpawnTests {
+    @DisplayName("threads.create entitlement")
+    class ThreadsCreateTests {
 
         @Test
-        @DisplayName("worker package can spawn threads (entitled)")
-        void workerPackageCanSpawnThreads() throws Exception {
-            // Given: org.jguard.samples.sandbox.worker.. is entitled to threads.spawn
+        @DisplayName("worker package can create threads (entitled)")
+        void workerPackageCanCreateThreads() throws Exception {
+            // Given: org.jguard.samples.sandbox.worker.. is entitled to threads.create
             try (BackgroundWorker worker = new BackgroundWorker()) {
 
                 // When: we spawn a background task
@@ -121,15 +109,27 @@ class EntitlementTest {
             }
         }
 
-        // TODO: Once enforcement is implemented, add tests for denied operations:
-        // @Test
-        // @DisplayName("main package cannot spawn threads")
-        // void mainPackageCannotSpawnThreads() {
-        //     // Code in org.jguard.samples.sandbox (not .worker) should be denied
-        //     assertThatThrownBy(() -> new Thread(() -> {}).start())
-        //         .isInstanceOf(SecurityException.class)
-        //         .hasMessageContaining("threads.spawn");
-        // }
+    }
+
+    @Nested
+    @DisplayName("native.load entitlement")
+    class NativeLoadTests {
+
+        @Test
+        @DisplayName("nativelib package can load native libraries (entitled)")
+        void nativelibPackageCanLoadLibraries() {
+            // Given: org.jguard.samples.sandbox.nativelib.. is entitled to native.load
+            // When: we attempt to load a library from that package
+            // The library doesn't exist, but the operation should be ALLOWED
+            try {
+                NativeLoader.tryLoadLibrary("nonexistent_test_lib");
+            } catch (UnsatisfiedLinkError e) {
+                // Expected - library doesn't exist, but operation was allowed
+                assertThat(e.getMessage()).contains("nonexistent_test_lib");
+            }
+            // If we get here without SecurityException, the operation was allowed
+        }
+
     }
 
     @Nested

@@ -8,5 +8,5 @@
 security module com.example.app {
     entitle module to fs.read("/data", "*.json");
     entitle com.example.app.net to network.outbound;
-    entitle com.example.app.worker.. to threads.spawn;
+    entitle com.example.app.worker.. to threads.create;
 }
