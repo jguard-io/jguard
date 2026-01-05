@@ -448,7 +448,7 @@ class PolicyEnforcerTest {
       PolicyEnforcer enforcer = createEnforcer(policy);
 
       assertThatCode(
-              () -> checkOperation(enforcer, caller("com.example.app"), Operation.NET_CONNECT))
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "example.com", 80))
           .doesNotThrowAnyException();
     }
 
@@ -460,7 +460,7 @@ class PolicyEnforcerTest {
       PolicyEnforcer enforcer = createEnforcer(policy);
 
       assertThatThrownBy(
-              () -> checkOperation(enforcer, caller("com.example.app"), Operation.NET_CONNECT))
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "example.com", 80))
           .isInstanceOf(SecurityException.class)
           .hasMessageContaining("network.outbound");
     }
@@ -656,10 +656,6 @@ class PolicyEnforcerTest {
       assertThatCode(() -> checkNetworkListen(enforcer, caller("com.example.app"), 8080))
           .doesNotThrowAnyException();
 
-      // Ephemeral port (0) allowed with any entitlement
-      assertThatCode(() -> checkNetworkListen(enforcer, caller("com.example.app"), 0))
-          .doesNotThrowAnyException();
-
       // Different port denied
       assertThatThrownBy(() -> checkNetworkListen(enforcer, caller("com.example.app"), 9090))
           .isInstanceOf(SecurityException.class);
@@ -735,6 +731,373 @@ class PolicyEnforcerTest {
     SecurityException denial = enforcer.check(caller, Operation.NET_LISTEN, null, port);
     if (denial != null) {
       throw denial;
+    }
+  }
+
+  /** Helper for network.outbound operations with host/port. */
+  private static void checkNetworkOutbound(
+      PolicyEnforcer enforcer, CallerContext caller, String host, int port) {
+    SecurityException denial = enforcer.check(caller, Operation.NET_CONNECT, host, port);
+    if (denial != null) {
+      throw denial;
+    }
+  }
+
+  @Nested
+  @DisplayName("HOST_PORT category operations (network.outbound with host/port filtering)")
+  class HostPortOperationTest {
+
+    @Test
+    @DisplayName(
+        "allows network.outbound when entitled with no restrictions (backwards compatible)")
+    void allowsNetworkOutboundAnyHostPort() {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.outbound"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatCode(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "example.com", 80))
+          .doesNotThrowAnyException();
+      assertThatCode(
+              () ->
+                  checkNetworkOutbound(enforcer, caller("com.example.app"), "api.example.com", 443))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("denies network.outbound when not entitled")
+    void deniesNetworkOutbound() {
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of());
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatThrownBy(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "example.com", 80))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("network.outbound");
+    }
+
+    @Test
+    @DisplayName("allows network.outbound with host pattern only")
+    void allowsNetworkOutboundHostPatternOnly() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.outbound", List.of(new CapabilityArgument.StringArg("*.example.com"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Matching host allowed (any port)
+      assertThatCode(
+              () ->
+                  checkNetworkOutbound(enforcer, caller("com.example.app"), "api.example.com", 80))
+          .doesNotThrowAnyException();
+      assertThatCode(
+              () ->
+                  checkNetworkOutbound(enforcer, caller("com.example.app"), "api.example.com", 443))
+          .doesNotThrowAnyException();
+
+      // Non-matching host denied
+      assertThatThrownBy(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "other.com", 80))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("allows network.outbound with specific port")
+    void allowsNetworkOutboundSpecificPort() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.outbound",
+                  List.of(
+                      new CapabilityArgument.StringArg("*"),
+                      new CapabilityArgument.IntegerArg(443))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Port 443 to any host allowed
+      assertThatCode(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "example.com", 443))
+          .doesNotThrowAnyException();
+
+      // Other ports denied
+      assertThatThrownBy(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "example.com", 80))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("allows network.outbound with port range")
+    void allowsNetworkOutboundPortRange() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.outbound",
+                  List.of(
+                      new CapabilityArgument.StringArg("*"),
+                      new CapabilityArgument.StringArg("80-443"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Ports in range allowed
+      assertThatCode(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "example.com", 80))
+          .doesNotThrowAnyException();
+      assertThatCode(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "example.com", 200))
+          .doesNotThrowAnyException();
+      assertThatCode(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "example.com", 443))
+          .doesNotThrowAnyException();
+
+      // Port outside range denied
+      assertThatThrownBy(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "example.com", 444))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("allows network.outbound with host and port combined")
+    void allowsNetworkOutboundHostAndPort() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.outbound",
+                  List.of(
+                      new CapabilityArgument.StringArg("*.example.com"),
+                      new CapabilityArgument.IntegerArg(443))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Both host and port must match
+      assertThatCode(
+              () ->
+                  checkNetworkOutbound(enforcer, caller("com.example.app"), "api.example.com", 443))
+          .doesNotThrowAnyException();
+
+      // Wrong port denied
+      assertThatThrownBy(
+              () ->
+                  checkNetworkOutbound(enforcer, caller("com.example.app"), "api.example.com", 80))
+          .isInstanceOf(SecurityException.class);
+
+      // Wrong host denied
+      assertThatThrownBy(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "other.com", 443))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("denies port 0 for network.outbound (invalid destination)")
+    void deniesPort0ForNetworkOutbound() {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.outbound"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Port 0 is always denied for outbound connections
+      assertThatThrownBy(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "example.com", 0))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("multiple entitlements - any match allows")
+    void multipleEntitlementsAnyMatchAllows() {
+      Entitlement e1 =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.outbound",
+                  List.of(
+                      new CapabilityArgument.StringArg("*.example.com"),
+                      new CapabilityArgument.IntegerArg(443))));
+      Entitlement e2 =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.outbound",
+                  List.of(
+                      new CapabilityArgument.StringArg("*.internal.net"),
+                      new CapabilityArgument.StringArg("8080-8090"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(e1, e2));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // First entitlement matches
+      assertThatCode(
+              () ->
+                  checkNetworkOutbound(enforcer, caller("com.example.app"), "api.example.com", 443))
+          .doesNotThrowAnyException();
+
+      // Second entitlement matches
+      assertThatCode(
+              () ->
+                  checkNetworkOutbound(
+                      enforcer, caller("com.example.app"), "server.internal.net", 8085))
+          .doesNotThrowAnyException();
+
+      // Neither matches
+      assertThatThrownBy(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "other.com", 80))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("host pattern ** matches multiple subdomains")
+    void doubleStarHostPattern() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.outbound", List.of(new CapabilityArgument.StringArg("**.example.com"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Single subdomain matches
+      assertThatCode(
+              () ->
+                  checkNetworkOutbound(enforcer, caller("com.example.app"), "api.example.com", 443))
+          .doesNotThrowAnyException();
+
+      // Multiple subdomains match
+      assertThatCode(
+              () ->
+                  checkNetworkOutbound(
+                      enforcer, caller("com.example.app"), "a.b.c.example.com", 443))
+          .doesNotThrowAnyException();
+
+      // Base domain does NOT match (** requires at least one segment)
+      assertThatThrownBy(
+              () -> checkNetworkOutbound(enforcer, caller("com.example.app"), "example.com", 443))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("host matching is case insensitive")
+    void hostMatchingCaseInsensitive() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.outbound", List.of(new CapabilityArgument.StringArg("*.example.com"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Mixed case matches
+      assertThatCode(
+              () ->
+                  checkNetworkOutbound(enforcer, caller("com.example.app"), "API.Example.COM", 443))
+          .doesNotThrowAnyException();
+    }
+  }
+
+  @Nested
+  @DisplayName("PORT category with ranges (network.listen)")
+  class PortRangeOperationTest {
+
+    @Test
+    @DisplayName("allows network.listen with port range")
+    void allowsNetworkListenPortRange() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.listen", List.of(new CapabilityArgument.StringArg("8080-8090"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Ports in range allowed
+      assertThatCode(() -> checkNetworkListen(enforcer, caller("com.example.app"), 8080))
+          .doesNotThrowAnyException();
+      assertThatCode(() -> checkNetworkListen(enforcer, caller("com.example.app"), 8085))
+          .doesNotThrowAnyException();
+      assertThatCode(() -> checkNetworkListen(enforcer, caller("com.example.app"), 8090))
+          .doesNotThrowAnyException();
+
+      // Port outside range denied
+      assertThatThrownBy(() -> checkNetworkListen(enforcer, caller("com.example.app"), 8091))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("allows port 0 (ephemeral) when entitled to any port")
+    void allowsPort0WhenAnyPort() {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.listen"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Port 0 allowed with no restriction
+      assertThatCode(() -> checkNetworkListen(enforcer, caller("com.example.app"), 0))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("denies port 0 (ephemeral) when entitled to specific port")
+    void deniesPort0WhenSpecificPort() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.listen", List.of(new CapabilityArgument.IntegerArg(8080))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Port 0 denied when only specific port is allowed
+      assertThatThrownBy(() -> checkNetworkListen(enforcer, caller("com.example.app"), 0))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("denies port 0 when entitled to range not containing 0")
+    void deniesPort0WhenRangeDoesNotContain0() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.listen", List.of(new CapabilityArgument.StringArg("8080-8090"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Port 0 denied when range doesn't include 0
+      assertThatThrownBy(() -> checkNetworkListen(enforcer, caller("com.example.app"), 0))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("allows port 0 when entitled to range containing 0")
+    void allowsPort0WhenRangeContains0() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "network.listen", List.of(new CapabilityArgument.StringArg("0-1024"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Port 0 allowed when range includes 0
+      assertThatCode(() -> checkNetworkListen(enforcer, caller("com.example.app"), 0))
+          .doesNotThrowAnyException();
     }
   }
 }

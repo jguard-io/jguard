@@ -16,7 +16,12 @@ security module org.jguard.samples.sandbox {
     entitle module to fs.write("build/test-output", "**");
 
     // Grant network outbound to specific packages
+    // The .net package can connect to any host/port
     entitle org.jguard.samples.sandbox.net to network.outbound;
+
+    // The .net.restricted subpackage can ONLY connect to *.example.com on ports 80-443
+    // This demonstrates host glob pattern + port range filtering
+    entitle org.jguard.samples.sandbox.net.restricted to network.outbound("*.example.com", "80-443");
 
     // Grant network listen to specific packages
     entitle org.jguard.samples.sandbox.net to network.listen;

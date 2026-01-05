@@ -222,14 +222,14 @@ Each capability has a fixed signature that determines:
 
 The following capabilities are defined in jGuard version 1:
 
-| Capability         | Signature                | Description                              |
-| ------------------ | ------------------------ | ---------------------------------------- |
-| `fs.read`          | `(root, glob)`           | Read files matching glob under root      |
-| `fs.write`         | `(root, glob)`           | Write files matching glob under root     |
-| `network.outbound` | (no arguments)           | Open outbound network connections        |
-| `network.listen`   | `(port?)`                | Bind server sockets (optional port)      |
-| `threads.create`   | (no arguments)           | Create new threads                       |
-| `native.load`      | `(pattern?)`             | Load native libraries (optional pattern) |
+| Capability         | Signature                    | Description                              |
+| ------------------ | ---------------------------- | ---------------------------------------- |
+| `fs.read`          | `(root, glob)`               | Read files matching glob under root      |
+| `fs.write`         | `(root, glob)`               | Write files matching glob under root     |
+| `network.outbound` | `(hostPattern?, portSpec?)`  | Open outbound network connections        |
+| `network.listen`   | `(portSpec?)`                | Bind server sockets (optional port/range)|
+| `threads.create`   | (no arguments)               | Create new threads                       |
+| `native.load`      | `(pattern?)`                 | Load native libraries (optional pattern) |
 
 #### Argument details
 
@@ -238,9 +238,38 @@ The following capabilities are defined in jGuard version 1:
 * `root` — base directory path (string)
 * `glob` — glob pattern for matching files (string, e.g., `"**/*"`, `"*.txt"`)
 
-**`network.listen(port?)`**
+**`network.outbound(hostPattern?, portSpec?)`**
 
-* `port` — optional port number (integer); if omitted, allows binding to any port
+* `hostPattern` — optional host glob pattern (string); if omitted, allows any host
+* `portSpec` — optional port or port range (integer or string); if omitted, allows any port
+
+Host pattern syntax:
+* `*` — matches exactly one DNS segment (e.g., `*.example.com` matches `api.example.com` but not `a.b.example.com`)
+* `**` — matches one or more DNS segments (e.g., `**.example.com` matches `api.example.com` and `a.b.c.example.com`)
+* Literal segments for exact matching
+
+Port spec can be:
+* Integer: `443` — specific port
+* String range: `"80-443"` — port range (inclusive)
+
+Examples:
+```
+entitle module to network.outbound;                           // Any host, any port
+entitle module to network.outbound("*.example.com");          // Any port to matching hosts
+entitle module to network.outbound("*", 443);                 // Port 443 to any host
+entitle module to network.outbound("*.example.com", "80-443"); // Port range to matching hosts
+```
+
+**`network.listen(portSpec?)`**
+
+* `portSpec` — optional port or port range (integer or string); if omitted, allows binding to any port
+
+Examples:
+```
+entitle module to network.listen;           // Any port
+entitle module to network.listen(8080);     // Specific port
+entitle module to network.listen("8080-8090"); // Port range
+```
 
 **`native.load(pattern?)`**
 

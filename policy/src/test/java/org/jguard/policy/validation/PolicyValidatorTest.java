@@ -206,9 +206,8 @@ class PolicyValidatorTest {
 
     @Test
     void rejectsCapabilityWithExtraArguments() {
-      // network.outbound takes no arguments
-      EntitlementDeclaration entitlement =
-          moduleEntitlement("network.outbound", stringArg("extra"));
+      // threads.create takes no arguments
+      EntitlementDeclaration entitlement = moduleEntitlement("threads.create", stringArg("extra"));
       PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
 
       PolicyValidator.ValidationResult result = validate(ast);
@@ -219,15 +218,15 @@ class PolicyValidatorTest {
 
     @Test
     void rejectsCapabilityWithWrongArgumentType() {
-      // network.listen requires integer, not string
+      // fs.read requires strings, not integers
       EntitlementDeclaration entitlement =
-          moduleEntitlement("network.listen", stringArg("not-a-port"));
+          moduleEntitlement("fs.read", intArg(123), stringArg("*.json"));
       PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
 
       PolicyValidator.ValidationResult result = validate(ast);
 
       assertThat(result.hasErrors()).isTrue();
-      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("must be integer"));
+      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("must be string"));
     }
 
     @Test
@@ -322,5 +321,234 @@ class PolicyValidatorTest {
 
   private Argument identifierArg(String value) {
     return new Argument.Identifier(value, LOC);
+  }
+
+  @Nested
+  class NetworkOutboundSemanticValidationTest {
+
+    @Test
+    void acceptsNetworkOutboundWithNoArgs() {
+      EntitlementDeclaration entitlement = moduleEntitlement("network.outbound");
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void acceptsNetworkOutboundWithHostOnly() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.outbound", stringArg("*.example.com"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void acceptsNetworkOutboundWithHostAndPort() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.outbound", stringArg("*.example.com"), intArg(443));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void acceptsNetworkOutboundWithHostAndPortRange() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.outbound", stringArg("*.example.com"), stringArg("80-443"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void acceptsDoubleStarHostPattern() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.outbound", stringArg("**.example.com"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void acceptsStarOnlyPattern() {
+      EntitlementDeclaration entitlement = moduleEntitlement("network.outbound", stringArg("*"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void rejectsPartialLabelWildcard() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.outbound", stringArg("api*-blue.example.com"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics())
+          .anyMatch(d -> d.message().contains("Partial-label wildcards not supported"));
+    }
+
+    @Test
+    void rejectsEmptySegmentInHostPattern() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.outbound", stringArg("api..example.com"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("empty segment"));
+    }
+
+    @Test
+    void rejectsLeadingDotInHostPattern() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.outbound", stringArg(".example.com"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("leading/trailing dot"));
+    }
+
+    @Test
+    void rejectsTrailingDotInHostPattern() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.outbound", stringArg("example.com."));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("leading/trailing dot"));
+    }
+
+    @Test
+    void rejectsConsecutiveDoubleStars() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.outbound", stringArg("**.**.example.com"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics())
+          .anyMatch(d -> d.message().contains("Consecutive ** not allowed"));
+    }
+
+    @Test
+    void rejectsReversedPortRange() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.outbound", stringArg("*"), stringArg("443-80"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics())
+          .anyMatch(d -> d.message().contains("start cannot be greater than end"));
+    }
+
+    @Test
+    void rejectsPortOutOfRange() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.outbound", stringArg("*"), intArg(70000));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("out of range"));
+    }
+
+    @Test
+    void rejectsInvalidPortSpecFormat() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.outbound", stringArg("*"), stringArg("abc"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("Invalid port spec"));
+    }
+  }
+
+  @Nested
+  class NetworkListenSemanticValidationTest {
+
+    @Test
+    void acceptsNetworkListenWithNoArgs() {
+      EntitlementDeclaration entitlement = moduleEntitlement("network.listen");
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void acceptsNetworkListenWithIntegerPort() {
+      EntitlementDeclaration entitlement = moduleEntitlement("network.listen", intArg(8080));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void acceptsNetworkListenWithPortRange() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.listen", stringArg("8080-8090"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void rejectsNetworkListenWithInvalidPortString() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.listen", stringArg("not-a-port"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("Invalid port spec"));
+    }
+
+    @Test
+    void rejectsNetworkListenWithReversedRange() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("network.listen", stringArg("9000-8000"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics())
+          .anyMatch(d -> d.message().contains("start cannot be greater than end"));
+    }
+
+    @Test
+    void rejectsNetworkListenWithPortOutOfRange() {
+      EntitlementDeclaration entitlement = moduleEntitlement("network.listen", intArg(70000));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("out of range"));
+    }
   }
 }

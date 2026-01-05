@@ -215,12 +215,18 @@ Runtime native loading is instrumented:
 
 The following capabilities are fully enforced:
 
-- `fs.read` — filesystem read operations
-- `fs.write` — filesystem write operations
-- `network.outbound` — outbound socket connections
-- `network.listen` — server socket binding
+- `fs.read(root, glob)` — filesystem read operations
+- `fs.write(root, glob)` — filesystem write operations
+- `network.outbound(hostPattern?, portSpec?)` — outbound socket connections with optional host/port filtering
+- `network.listen(portSpec?)` — server socket binding with optional port or port range
 - `threads.create` — thread creation
-- `native.load` — native library loading
+- `native.load(pattern?)` — native library loading
+
+**Host patterns** for `network.outbound`:
+- `*` matches exactly one DNS segment (e.g., `*.example.com` matches `api.example.com`)
+- `**` matches one or more DNS segments (e.g., `**.example.com` matches `a.b.c.example.com`)
+
+**Port specs** can be integers (`443`) or ranges (`"8080-8090"`).
 
 ### JVM Bootstrap Operations
 

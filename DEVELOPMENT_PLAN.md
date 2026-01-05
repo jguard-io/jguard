@@ -18,7 +18,6 @@ Produce a credible **jGuard v0.1.0** that:
 * Full Java Security Manager parity
 * Complete API coverage
 * Reflection, classloading, or memory sandboxing
-* Complex network filtering (hosts/ports)
 * Container or OS integration
 
 ---
@@ -201,25 +200,34 @@ Exit criteria:
 
 Implementation:
 
-* `network.outbound` capability (0 arguments) grants outbound TCP connection rights
+* `network.outbound(host?, port?)` capability with optional host/port filtering
+  * `network.outbound` - allows any host, any port
+  * `network.outbound("*.example.com")` - host glob pattern, any port
+  * `network.outbound("*", 443)` - any host, specific port
+  * `network.outbound("*.example.com", "80-443")` - host pattern + port range
+* Host glob patterns: `*` matches one DNS segment, `**` matches one or more
+* Port specs: integer (`443`) or range string (`"80-443"`)
 * Instrumented classes:
   * `java.net.Socket` - constructors and connect() method
   * `java.nio.channels.SocketChannel` - connect() method
-* BootstrapEnforcer.onNetworkConnect() callbacks for enforcement
-* PolicyEnforcer.checkNetworkOutbound() for policy evaluation
+* BootstrapEnforcer.onNetworkConnect(host, port) callbacks for enforcement
+* PolicyEnforcer.checkNetworkOutbound(context, host, port) for policy evaluation
 * Retransformation support for bootstrap-loaded classes via DiscoveryStrategy.Reiterating
 
 Exit criteria:
 
 * demonstrable prevention of outbound socket creation ✓
+* demonstrable host/port filtering in sandbox-demo ✓
 
 ---
 
 ### M4.1 — Network Listen Enforcement ✓
 
-* `network.listen` capability grants server socket binding rights
+* `network.listen(port?)` capability grants server socket binding rights
   * `network.listen` (no arguments) - allows binding to any port
-  * `network.listen(port)` (1 integer argument) - allows binding to specific port only
+  * `network.listen(8080)` (integer) - allows binding to specific port only
+  * `network.listen("8080-8090")` (string range) - allows binding to port range
+* Port specs: integer (`8080`) or range string (`"8080-8090"`)
 * Instrumented classes:
   * `java.net.ServerSocket` - constructors and bind() method
   * `java.nio.channels.ServerSocketChannel` - bind() method
@@ -302,6 +310,36 @@ Benefits:
 
 ---
 
+### M4.6 — Network Host/Port Filtering ✓
+
+Enhanced `network.outbound` with host glob patterns and port range filtering:
+
+* **Host glob patterns**:
+  * `*` matches exactly one DNS segment (e.g., `*.example.com` matches `api.example.com`)
+  * `**` matches one or more segments (e.g., `**.example.com` matches `a.b.c.example.com`)
+  * Case-insensitive matching with IDN normalization
+* **Port specifications**:
+  * Integer: `443` for specific port
+  * String range: `"80-443"` for port range
+* New `HOST_PORT` operation category in bootstrap
+* `HostMatcher` utility for segment-based DNS matching
+* `PortRange` utility for port/range parsing and matching
+
+Implementation files:
+
+* `agent/src/main/java/org/jguard/agent/HostMatcher.java`
+* `agent/src/main/java/org/jguard/agent/PortRange.java`
+* Updated `PolicyValidator` for host/port semantic validation
+* Updated `PolicyEnforcer` with HOST_PORT category handler
+
+Exit criteria:
+
+* demonstrable host pattern filtering (allow `*.example.com`, deny `evil.com`) ✓
+* demonstrable port range filtering (allow `80-443`, deny `8080`) ✓
+* sandbox-demo includes RestrictedNetworkClient example ✓
+
+---
+
 ### M5 — Integration proof ✓
 
 * `samples/sandbox-demo` demonstrates full integration
@@ -344,7 +382,7 @@ Remaining for v0.1.0 release:
 |------------|--------|----------|
 | `fs.read(root, glob)` | ✓ | FILESYSTEM |
 | `fs.write(root, glob)` | ✓ | FILESYSTEM |
-| `network.outbound` | ✓ | SIMPLE |
+| `network.outbound(host?, port?)` | ✓ | HOST_PORT |
 | `network.listen(port?)` | ✓ | PORT |
 | `threads.create` | ✓ | SIMPLE |
 | `native.load(pattern?)` | ✓ | TARGET_PATTERN |
@@ -358,6 +396,8 @@ Additional features:
 | Single dispatch architecture | ✓ |
 | Gradle plugin with runWithAgent | ✓ |
 | Comprehensive documentation | ✓ |
+| Network host/port filtering | ✓ |
+| Port range support | ✓ |
 
 ---
 
@@ -406,6 +446,5 @@ Potential additions:
 
 * `env.read` / `env.write` — environment variable access
 * `classloader.create` — custom classloader creation
-* Network host/port filtering for `network.outbound`
 * `system.property.read` / `system.property.write` — system property access
 

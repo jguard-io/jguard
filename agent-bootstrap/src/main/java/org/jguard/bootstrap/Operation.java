@@ -47,7 +47,7 @@ public enum Operation {
    *
    * <p>Arguments: {@code arg0} = String host, {@code arg1} = port
    */
-  NET_CONNECT("network.outbound", Category.SIMPLE),
+  NET_CONNECT("network.outbound", Category.HOST_PORT),
 
   /**
    * Network listen (server socket bind).
@@ -91,11 +91,28 @@ public enum Operation {
     SIMPLE,
 
     /**
-     * Port-based capabilities with optional port restriction.
+     * Port-based capabilities with optional port or port-range restriction.
      *
-     * <p>Policy args: none (any port) or {@code (port)} for specific port.
+     * <p>Policy args: none (any port), {@code (port)} for specific port, or {@code ("start-end")}
+     * for port range.
      */
     PORT,
+
+    /**
+     * Host and port filtering capabilities.
+     *
+     * <p>Policy args: none (any host/port), {@code (hostPattern)} for host filtering, {@code
+     * (hostPattern, port)} or {@code (hostPattern, "start-end")} for both.
+     *
+     * <p>Host patterns support:
+     *
+     * <ul>
+     *   <li>{@code *} - any single DNS segment
+     *   <li>{@code **} - one or more DNS segments
+     *   <li>Literal segments for exact matching
+     * </ul>
+     */
+    HOST_PORT,
 
     /**
      * Target pattern capabilities with optional pattern matching.

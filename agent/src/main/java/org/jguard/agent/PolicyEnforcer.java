@@ -87,18 +87,26 @@ public final class PolicyEnforcer {
       return deniedModuleMismatch(callerPackage, callerModule, formatDetails(op, arg0, arg1));
     }
 
-    // Build cache key
+    // Build cache key (may be null for high-cardinality operations like HOST_PORT)
     String cacheKey = buildCacheKey(callerPackage, callerModule, op, arg0, arg1);
-    Boolean cached = decisionCache.get(cacheKey);
-    if (cached != null) {
-      return cached
-          ? null
-          : denied(callerPackage, op.capabilityName(), formatDetails(op, arg0, arg1));
+
+    // Check cache if key is available
+    if (cacheKey != null) {
+      Boolean cached = decisionCache.get(cacheKey);
+      if (cached != null) {
+        return cached
+            ? null
+            : denied(callerPackage, op.capabilityName(), formatDetails(op, arg0, arg1));
+      }
     }
 
     // Check entitlements
     boolean allowed = isAllowed(callerPackage, op, arg0, arg1);
-    decisionCache.put(cacheKey, allowed);
+
+    // Cache result if key is available
+    if (cacheKey != null) {
+      decisionCache.put(cacheKey, allowed);
+    }
 
     return allowed
         ? null
@@ -119,6 +127,10 @@ public final class PolicyEnforcer {
       case SIMPLE -> op.capabilityName();
       case PORT -> "port " + arg1;
       case TARGET_PATTERN -> arg0 != null ? arg0.toString() : "any target";
+      case HOST_PORT -> {
+        String host = arg0 != null ? arg0.toString() : "*";
+        yield host + ":" + arg1;
+      }
     };
   }
 
@@ -134,8 +146,9 @@ public final class PolicyEnforcer {
     return switch (op.category()) {
       case FILESYSTEM -> base + ":" + ((Path) arg0).toAbsolutePath();
       case SIMPLE -> base;
-      case PORT -> base + ":" + arg1;
+      case PORT -> base + ":" + arg1; // Include port for caching
       case TARGET_PATTERN -> base + ":" + (arg0 != null ? arg0 : "any");
+      case HOST_PORT -> null; // Don't cache HOST_PORT - high cardinality hosts
     };
   }
 
@@ -152,6 +165,7 @@ public final class PolicyEnforcer {
       case SIMPLE -> isAllowedSimple(callerPackage, capability);
       case PORT -> isAllowedPort(callerPackage, arg1, capability);
       case TARGET_PATTERN -> isAllowedTargetPattern(callerPackage, (String) arg0, capability);
+      case HOST_PORT -> isAllowedHostPort(callerPackage, (String) arg0, arg1, capability);
     };
   }
 
@@ -210,9 +224,11 @@ public final class PolicyEnforcer {
   }
 
   /**
-   * Handles PORT category - optional port restriction.
+   * Handles PORT category - optional port or port-range restriction.
    *
    * <p>Used for: network.listen
+   *
+   * <p>Port 0 (ephemeral) is only allowed if the entitlement explicitly includes it.
    */
   private boolean isAllowedPort(String callerPackage, int port, String capability) {
     for (Entitlement entitlement : policy.entitlements()) {
@@ -225,7 +241,7 @@ public final class PolicyEnforcer {
 
       List<CapabilityArgument> args = entitlement.capability().arguments();
       if (args.isEmpty()) {
-        // No arguments - allows any port
+        // No arguments - allows any port (including port 0)
         LOG.debug(
             "{} allowed (any port): package={}, port={}, entitlement={}",
             capability,
@@ -234,15 +250,15 @@ public final class PolicyEnforcer {
             entitlement);
         return true;
       } else if (args.size() == 1) {
-        // Specific port restriction
-        long allowedPort = ((CapabilityArgument.IntegerArg) args.get(0)).value();
-        if (port == allowedPort || port == 0) {
-          // Port 0 means "any available port" - allow if they have any entitlement
+        // Port or port-range restriction
+        PortRange range = parsePortArg(args.get(0));
+        if (range.contains(port)) {
           LOG.debug(
-              "{} allowed (port match): package={}, port={}, entitlement={}",
+              "{} allowed (port match): package={}, port={}, range={}, entitlement={}",
               capability,
               callerPackage,
               port,
+              range,
               entitlement);
           return true;
         }
@@ -251,6 +267,89 @@ public final class PolicyEnforcer {
 
     LOG.debug("{} denied: package={}, port={}", capability, callerPackage, port);
     return false;
+  }
+
+  /**
+   * Handles HOST_PORT category - host glob + port/port-range filtering.
+   *
+   * <p>Used for: network.outbound
+   *
+   * <p>Port 0 is not a valid destination for outbound connections and is always denied.
+   */
+  private boolean isAllowedHostPort(
+      String callerPackage, String host, int port, String capability) {
+    // Port 0 is not a valid destination for outbound connections
+    if (port == 0) {
+      LOG.debug("{} denied: port 0 is invalid destination", capability);
+      return false;
+    }
+
+    for (Entitlement entitlement : policy.entitlements()) {
+      if (!entitlement.capability().name().equals(capability)) {
+        continue;
+      }
+      if (!subjectMatches(entitlement.subject(), callerPackage)) {
+        continue;
+      }
+
+      List<CapabilityArgument> args = entitlement.capability().arguments();
+
+      if (args.isEmpty()) {
+        // No args = any host, any port
+        LOG.debug(
+            "{} allowed (any host/port): package={}, host={}, port={}, entitlement={}",
+            capability,
+            callerPackage,
+            host,
+            port,
+            entitlement);
+        return true;
+      }
+
+      String hostPattern = "*";
+      PortRange portRange = PortRange.any();
+
+      if (args.size() >= 1) {
+        hostPattern = getStringArg(args.get(0));
+      }
+      if (args.size() >= 2) {
+        portRange = parsePortArg(args.get(1));
+      }
+
+      if (HostMatcher.matches(host, hostPattern) && portRange.contains(port)) {
+        LOG.debug(
+            "{} allowed: package={}, host={}, port={}, hostPattern={}, portRange={}, entitlement={}",
+            capability,
+            callerPackage,
+            host,
+            port,
+            hostPattern,
+            portRange,
+            entitlement);
+        return true;
+      }
+    }
+
+    LOG.debug("{} denied: package={}, host={}, port={}", capability, callerPackage, host, port);
+    return false;
+  }
+
+  private PortRange parsePortArg(CapabilityArgument arg) {
+    if (arg instanceof CapabilityArgument.IntegerArg intArg) {
+      return PortRange.single((int) intArg.value());
+    } else if (arg instanceof CapabilityArgument.StringArg strArg) {
+      return PortRange.parse(strArg.value());
+    }
+    throw new IllegalArgumentException("Invalid port argument: " + arg);
+  }
+
+  private String getStringArg(CapabilityArgument arg) {
+    if (arg instanceof CapabilityArgument.StringArg strArg) {
+      return strArg.value();
+    } else if (arg instanceof CapabilityArgument.IntegerArg) {
+      throw new IllegalArgumentException("Expected string argument, got integer: " + arg);
+    }
+    throw new IllegalArgumentException("Invalid argument: " + arg);
   }
 
   /**
