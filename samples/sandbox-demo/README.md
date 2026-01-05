@@ -87,10 +87,54 @@ jGuard enforces your policy transparently—if the code is entitled, it runs; if
 |------------|-------------|
 | `fs.read(root, glob)` | Read files matching glob under root |
 | `fs.write(root, glob)` | Write files matching glob under root |
-| `network.outbound` | Make outbound network connections |
-| `network.listen(port?)` | Listen on a port (optional port arg) |
+| `network.outbound(host?, port?)` | Make outbound connections (optional host pattern and port/range) |
+| `network.listen(port?)` | Listen on a port (optional port or range like `"8080-8090"`) |
 | `threads.create` | Create threads |
 | `native.load(pattern?)` | Load native libraries (optional pattern) |
+
+Host patterns: `*` matches one DNS segment, `**` matches one or more. Example: `*.example.com`
+
+### Host/Port Filtering Example
+
+The demo includes a `RestrictedNetworkClient` that demonstrates host/port filtering:
+
+```
+// Policy restricts this package to specific hosts and ports
+entitle org.jguard.samples.sandbox.net.restricted to network.outbound("*.example.com", "80-443");
+```
+
+When running with the agent:
+- `api.example.com:443` → **ALLOWED** (host matches `*.example.com`, port in range)
+- `evil.com:443` → **DENIED** (host doesn't match pattern)
+- `api.example.com:8080` → **DENIED** (port outside range 80-443)
+
+**Try it:**
+
+```bash
+# Without agent (all connections allowed)
+../../gradlew run
+
+# With agent (host/port filtering enforced)
+../../gradlew runWithAgent
+```
+
+You'll see output like:
+
+```
+[ENTITLED] network.outbound("*.example.com", "80-443")
+  Attempting to connect to api.example.com:443...
+  SUCCESS: Connection ALLOWED (host matches *.example.com, port in 80-443)
+
+[NOT ENTITLED] network.outbound to non-matching host
+  Attempting to connect to evil.com:443...
+  (Policy only allows *.example.com)
+  BLOCKED (expected): Host 'evil.com' doesn't match '*.example.com'
+
+[NOT ENTITLED] network.outbound to non-matching port
+  Attempting to connect to api.example.com:8080...
+  (Policy only allows ports 80-443)
+  BLOCKED (expected): Port 8080 not in range 80-443
+```
 
 ## What Gets Built
 
@@ -164,9 +208,12 @@ sandbox-demo/
     │   ├── module-info.jguard        # jGuard policy (lives next to module-info.java)
     │   └── org/jguard/samples/sandbox/
     │       ├── Main.java             # Demo runner
-    │       ├── net/NetworkClient.java          # Entitled to network.outbound
-    │       ├── worker/BackgroundWorker.java    # Entitled to threads.create
-    │       └── nativelib/NativeLoader.java     # Entitled to native.load
+    │       ├── net/
+    │       │   ├── NetworkClient.java             # Entitled to network.outbound (any host)
+    │       │   └── restricted/
+    │       │       └── RestrictedNetworkClient.java # Entitled to *.example.com:80-443 only
+    │       ├── worker/BackgroundWorker.java       # Entitled to threads.create
+    │       └── nativelib/NativeLoader.java        # Entitled to native.load
     └── test/java/
         └── org/jguard/samples/sandbox/
             └── EntitlementTest.java

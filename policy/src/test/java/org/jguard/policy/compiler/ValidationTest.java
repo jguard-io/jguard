@@ -46,17 +46,34 @@ class ValidationTest {
 
   @Test
   void rejectsWrongArgumentType() {
+    // fs.read requires strings, not integers
     String source =
         """
             security module com.example.app {
-                entitle module to network.listen("not-a-number");
+                entitle module to fs.read(123, "*.txt");
             }
             """;
 
     PolicyCompiler.CompileResult result = PolicyCompiler.compileSource(source, "test.jguard");
 
     assertThat(result.hasErrors()).isTrue();
-    assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("must be integer"));
+    assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("must be string"));
+  }
+
+  @Test
+  void rejectsInvalidPortSpec() {
+    // network.listen rejects invalid port specs
+    String source =
+        """
+            security module com.example.app {
+                entitle module to network.listen("not-a-port");
+            }
+            """;
+
+    PolicyCompiler.CompileResult result = PolicyCompiler.compileSource(source, "test.jguard");
+
+    assertThat(result.hasErrors()).isTrue();
+    assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("Invalid port spec"));
   }
 
   @Test

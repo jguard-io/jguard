@@ -21,6 +21,7 @@ import org.jguard.core.JGuard;
 import org.jguard.samples.sandbox.nativelib.NativeLoader;
 import org.jguard.samples.sandbox.net.NetworkClient;
 import org.jguard.samples.sandbox.net.NetworkServer;
+import org.jguard.samples.sandbox.net.restricted.RestrictedNetworkClient;
 import org.jguard.samples.sandbox.worker.BackgroundWorker;
 
 /**
@@ -111,24 +112,33 @@ public final class Main {
     // Test 12: Server socket from non-entitled package (NOT ENTITLED)
     demonstrateUnentitledNetworkListenAccess();
 
+    // Test 13: Host/port filtering - connection to allowed host (ENTITLED)
+    demonstrateHostPortFiltering_AllowedHost();
+
+    // Test 14: Host/port filtering - connection to denied host (NOT ENTITLED)
+    demonstrateHostPortFiltering_DeniedHost();
+
+    // Test 15: Host/port filtering - connection to denied port (NOT ENTITLED)
+    demonstrateHostPortFiltering_DeniedPort();
+
     // === THREAD TESTS ===
     System.out.println("--- THREAD TESTS ---");
     System.out.println();
 
-    // Test 13: Thread creation from entitled package (ENTITLED)
+    // Test 16: Thread creation from entitled package (ENTITLED)
     demonstrateEntitledThreadAccess();
 
-    // Test 14: Thread creation from non-entitled package (NOT ENTITLED)
+    // Test 17: Thread creation from non-entitled package (NOT ENTITLED)
     demonstrateUnentitledThreadAccess();
 
     // === NATIVE LIBRARY TESTS ===
     System.out.println("--- NATIVE LIBRARY TESTS ---");
     System.out.println();
 
-    // Test 15: Native library load from entitled package (ENTITLED)
+    // Test 18: Native library load from entitled package (ENTITLED)
     demonstrateEntitledNativeAccess();
 
-    // Test 16: Native library load from non-entitled package (NOT ENTITLED)
+    // Test 19: Native library load from non-entitled package (NOT ENTITLED)
     demonstrateUnentitledNativeAccess();
   }
 
@@ -443,6 +453,77 @@ public final class Main {
       System.out.println("  BLOCKED (expected): " + e.getMessage());
     } catch (IOException e) {
       System.out.println("  ERROR: " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates host/port filtering - connecting to an ALLOWED host.
+   *
+   * <p>The .net.restricted package is entitled to network.outbound("*.example.com", "80-443").
+   * Connecting to api.example.com:443 should be ALLOWED.
+   */
+  private static void demonstrateHostPortFiltering_AllowedHost() {
+    System.out.println("[ENTITLED] network.outbound(\"*.example.com\", \"80-443\")");
+    System.out.println("  Attempting to connect to api.example.com:443...");
+
+    RestrictedNetworkClient.ConnectionResult result =
+        RestrictedNetworkClient.tryConnect("api.example.com", 443);
+
+    if (result.allowed()) {
+      System.out.println("  SUCCESS: Connection ALLOWED (host matches *.example.com, port in 80-443)");
+      System.out.println("  Network result: " + result.message());
+    } else {
+      System.out.println("  BLOCKED (unexpected): " + result.message());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates host/port filtering - connecting to a DENIED host.
+   *
+   * <p>The .net.restricted package is entitled to network.outbound("*.example.com", "80-443").
+   * Connecting to evil.com:443 should be DENIED because the host doesn't match *.example.com.
+   */
+  private static void demonstrateHostPortFiltering_DeniedHost() {
+    System.out.println("[NOT ENTITLED] network.outbound to non-matching host");
+    System.out.println("  Attempting to connect to evil.com:443...");
+    System.out.println("  (Policy only allows *.example.com)");
+
+    RestrictedNetworkClient.ConnectionResult result =
+        RestrictedNetworkClient.tryConnect("evil.com", 443);
+
+    if (result.allowed()) {
+      System.out.println("  SUCCESS: Connection allowed (unexpected!)");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+    } else {
+      System.out.println("  BLOCKED (expected): Host 'evil.com' doesn't match '*.example.com'");
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates host/port filtering - connecting to a DENIED port.
+   *
+   * <p>The .net.restricted package is entitled to network.outbound("*.example.com", "80-443").
+   * Connecting to api.example.com:8080 should be DENIED because port 8080 is outside 80-443.
+   */
+  private static void demonstrateHostPortFiltering_DeniedPort() {
+    System.out.println("[NOT ENTITLED] network.outbound to non-matching port");
+    System.out.println("  Attempting to connect to api.example.com:8080...");
+    System.out.println("  (Policy only allows ports 80-443)");
+
+    RestrictedNetworkClient.ConnectionResult result =
+        RestrictedNetworkClient.tryConnect("api.example.com", 8080);
+
+    if (result.allowed()) {
+      System.out.println("  SUCCESS: Connection allowed (unexpected!)");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+    } else {
+      System.out.println("  BLOCKED (expected): Port 8080 not in range 80-443");
     }
 
     System.out.println();

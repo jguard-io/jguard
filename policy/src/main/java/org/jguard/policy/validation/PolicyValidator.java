@@ -44,8 +44,9 @@ public final class PolicyValidator {
       Map.of(
           "fs.read", new CapabilitySignature(2, 2, List.of(ArgType.STRING, ArgType.STRING)),
           "fs.write", new CapabilitySignature(2, 2, List.of(ArgType.STRING, ArgType.STRING)),
-          "network.outbound", new CapabilitySignature(0, 0, List.of()),
-          "network.listen", new CapabilitySignature(0, 1, List.of(ArgType.INTEGER)),
+          "network.outbound",
+              new CapabilitySignature(0, 2, List.of(ArgType.STRING, ArgType.STRING_OR_INTEGER)),
+          "network.listen", new CapabilitySignature(0, 1, List.of(ArgType.STRING_OR_INTEGER)),
           "threads.create", new CapabilitySignature(0, 0, List.of()),
           "native.load", new CapabilitySignature(0, 1, List.of(ArgType.STRING)));
 
@@ -182,6 +183,124 @@ public final class PolicyValidator {
       ArgType expectedType = signature.argTypes().get(i);
       validateArgument(arg, expectedType, name, i);
     }
+
+    // Semantic validation per capability
+    validateCapabilitySemantics(name, args, location);
+  }
+
+  private void validateCapabilitySemantics(
+      String name, List<Argument> args, SourceLocation location) {
+    switch (name) {
+      case "network.outbound" -> validateNetworkOutbound(args, location);
+      case "network.listen" -> validateNetworkListen(args, location);
+      default -> {
+        // Other capabilities don't need semantic validation yet
+      }
+    }
+  }
+
+  private void validateNetworkOutbound(List<Argument> args, SourceLocation location) {
+    if (args.isEmpty()) {
+      return; // OK: any host, any port
+    }
+
+    // First arg must be host pattern (string)
+    Argument firstArg = args.get(0);
+    if (firstArg instanceof Argument.StringLiteral s) {
+      validateHostPattern(s.value(), location);
+    } else if (firstArg instanceof Argument.Identifier id) {
+      validateHostPattern(id.value(), location);
+    }
+    // IntegerLiteral for first arg is a type error already caught above
+
+    // Second arg (if present) must be port spec
+    if (args.size() >= 2) {
+      validatePortSpec(args.get(1), location);
+    }
+  }
+
+  private void validateNetworkListen(List<Argument> args, SourceLocation location) {
+    if (args.isEmpty()) {
+      return; // OK: any port
+    }
+    validatePortSpec(args.get(0), location);
+  }
+
+  private void validateHostPattern(String pattern, SourceLocation location) {
+    if (pattern == null || pattern.isEmpty()) {
+      error("Host pattern cannot be empty", location);
+      return;
+    }
+
+    // Reject trailing/leading dots in policy
+    if (pattern.startsWith(".") || pattern.endsWith(".")) {
+      error("Invalid host pattern (leading/trailing dot): " + pattern, location);
+      return;
+    }
+
+    // Validate segment-by-segment
+    String[] segments = pattern.split("\\.");
+    for (int i = 0; i < segments.length; i++) {
+      String seg = segments[i];
+
+      if (seg.isEmpty()) {
+        error("Invalid host pattern (empty segment): " + pattern, location);
+        return;
+      }
+
+      // Each segment must be: "*", "**", or literal with no wildcards
+      if (seg.contains("*")) {
+        if (!seg.equals("*") && !seg.equals("**")) {
+          error("Partial-label wildcards not supported: " + pattern, location);
+          return;
+        }
+        // Reject consecutive ** segments
+        if (seg.equals("**") && i > 0 && segments[i - 1].equals("**")) {
+          error("Consecutive ** not allowed: " + pattern, location);
+          return;
+        }
+      }
+    }
+  }
+
+  private void validatePortSpec(Argument arg, SourceLocation location) {
+    if (arg instanceof Argument.IntegerLiteral intArg) {
+      long port = intArg.value();
+      if (port < 0 || port > 65535) {
+        error("Port out of range (0-65535): " + port, location);
+      }
+    } else if (arg instanceof Argument.StringLiteral strArg) {
+      String spec = strArg.value().trim();
+      if (!spec.matches("\\d+(-\\d+)?")) {
+        error("Invalid port spec (expected 'port' or 'start-end'): " + spec, location);
+        return;
+      }
+      // Parse and validate range
+      int dashIndex = spec.indexOf('-');
+      if (dashIndex == -1) {
+        // Single port
+        long port = Long.parseLong(spec);
+        if (port < 0 || port > 65535) {
+          error("Port out of range (0-65535): " + port, location);
+        }
+      } else {
+        // Range
+        long start = Long.parseLong(spec.substring(0, dashIndex));
+        long end = Long.parseLong(spec.substring(dashIndex + 1));
+        if (start < 0 || start > 65535) {
+          error("Start port out of range (0-65535): " + start, location);
+        }
+        if (end < 0 || end > 65535) {
+          error("End port out of range (0-65535): " + end, location);
+        }
+        if (start > end) {
+          error("Port range start cannot be greater than end: " + spec, location);
+        }
+      }
+    } else if (arg instanceof Argument.Identifier id) {
+      // Identifiers for port specs are allowed (e.g., named constants)
+      // We can't validate the value at compile time
+    }
   }
 
   private void validateArgument(
@@ -191,6 +310,10 @@ public final class PolicyValidator {
           case STRING ->
               arg instanceof Argument.StringLiteral || arg instanceof Argument.Identifier;
           case INTEGER -> arg instanceof Argument.IntegerLiteral;
+          case STRING_OR_INTEGER ->
+              arg instanceof Argument.StringLiteral
+                  || arg instanceof Argument.Identifier
+                  || arg instanceof Argument.IntegerLiteral;
         };
 
     if (!valid) {
@@ -200,13 +323,17 @@ public final class PolicyValidator {
             case Argument.StringLiteral s -> "string";
             case Argument.IntegerLiteral n -> "integer";
           };
+      String expectedDescription =
+          expectedType == ArgType.STRING_OR_INTEGER
+              ? "string or integer"
+              : expectedType.name().toLowerCase();
       error(
           "Capability '"
               + capabilityName
               + "' argument "
               + (index + 1)
               + " must be "
-              + expectedType.name().toLowerCase()
+              + expectedDescription
               + ", got "
               + actualType,
           arg.location());
@@ -288,7 +415,8 @@ public final class PolicyValidator {
 
   private enum ArgType {
     STRING,
-    INTEGER
+    INTEGER,
+    STRING_OR_INTEGER
   }
 
   /**

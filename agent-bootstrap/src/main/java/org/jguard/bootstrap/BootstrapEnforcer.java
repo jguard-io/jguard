@@ -387,6 +387,7 @@ public final class BootstrapEnforcer {
       case SIMPLE -> arg0 != null ? arg0 + ":" + arg1 : "n/a";
       case PORT -> "port=" + arg1;
       case TARGET_PATTERN -> arg0 != null ? String.valueOf(arg0) : "any";
+      case HOST_PORT -> (arg0 != null ? arg0 : "*") + ":" + arg1;
     };
   }
 
@@ -402,6 +403,7 @@ public final class BootstrapEnforcer {
       case SIMPLE -> true; // No strict type requirement
       case PORT -> true; // arg0 is null, arg1 is port
       case TARGET_PATTERN -> arg0 == null || arg0 instanceof String;
+      case HOST_PORT -> arg0 == null || arg0 instanceof String; // arg0 is host, arg1 is port
     };
   }
 

@@ -128,10 +128,16 @@ Examples include:
 
 * `fs.read(root, glob)` — read files matching glob pattern under root
 * `fs.write(root, glob)` — write files matching glob pattern under root
-* `network.outbound` — open outbound network connections
-* `network.listen` — bind server sockets to ports
+* `network.outbound(hostPattern?, portSpec?)` — open outbound network connections with optional host/port filtering
+* `network.listen(portSpec?)` — bind server sockets to ports (supports port ranges)
 * `threads.create` — create new threads
-* `native.load` — load native libraries
+* `native.load(pattern?)` — load native libraries
+
+**Host patterns** for `network.outbound`:
+* `*` — matches one DNS segment (e.g., `*.example.com`)
+* `**` — matches one or more DNS segments (e.g., `**.example.com`)
+
+**Port specs** can be integers (`443`) or ranges (`"80-443"`).
 
 Capabilities are intentionally narrow and composable.
 
