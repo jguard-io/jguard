@@ -222,14 +222,17 @@ Each capability has a fixed signature that determines:
 
 The following capabilities are defined in jGuard version 1:
 
-| Capability         | Signature                    | Description                              |
-| ------------------ | ---------------------------- | ---------------------------------------- |
-| `fs.read`          | `(root, glob)`               | Read files matching glob under root      |
-| `fs.write`         | `(root, glob)`               | Write files matching glob under root     |
-| `network.outbound` | `(hostPattern?, portSpec?)`  | Open outbound network connections        |
-| `network.listen`   | `(portSpec?)`                | Bind server sockets (optional port/range)|
-| `threads.create`   | (no arguments)               | Create new threads                       |
-| `native.load`      | `(pattern?)`                 | Load native libraries (optional pattern) |
+| Capability              | Signature                    | Description                              |
+| ----------------------- | ---------------------------- | ---------------------------------------- |
+| `fs.read`               | `(root, glob)`               | Read files matching glob under root      |
+| `fs.write`              | `(root, glob)`               | Write files matching glob under root     |
+| `network.outbound`      | `(hostPattern?, portSpec?)`  | Open outbound network connections        |
+| `network.listen`        | `(portSpec?)`                | Bind server sockets (optional port/range)|
+| `threads.create`        | (no arguments)               | Create new threads                       |
+| `native.load`           | `(pattern?)`                 | Load native libraries (optional pattern) |
+| `env.read`              | `(pattern?)`                 | Read environment variables               |
+| `system.property.read`  | `(pattern?)`                 | Read system properties                   |
+| `system.property.write` | `(pattern?)`                 | Write system properties                  |
 
 #### Argument details
 
@@ -274,6 +277,44 @@ entitle module to network.listen("8080-8090"); // Port range
 **`native.load(pattern?)`**
 
 * `pattern` — optional library name pattern (string); if omitted, allows loading any library
+
+**`env.read(pattern?)`**
+
+* `pattern` — optional environment variable name pattern (string); if omitted, allows reading any env var
+
+Pattern syntax:
+* No argument or `*` — matches any env var (also grants bulk access via `System.getenv()`)
+* `HOME` — exact match for specific variable
+* Bulk API `System.getenv()` requires no-arg or `*` entitlement
+
+Examples:
+```
+entitle module to env.read;              // Any env var, including bulk access
+entitle module to env.read("HOME");      // Only HOME variable
+entitle module to env.read("*");         // Any env var, including bulk access
+```
+
+**`system.property.read(pattern?)` / `system.property.write(pattern?)`**
+
+* `pattern` — optional property key pattern (string); if omitted, allows any property
+
+Pattern syntax:
+* No argument or `*` — matches any property (also grants bulk access)
+* `java.home` — exact match for specific property
+* `app.**` — matches `app` and all descendants (e.g., `app.config.setting`)
+* `app.*` — matches direct children only (e.g., `app.config` but not `app.config.setting`)
+
+Bulk APIs:
+* `System.getProperties()` requires `system.property.read` with no-arg or `*`
+* `System.setProperties(Properties)` requires `system.property.write` with no-arg or `*`
+* `System.clearProperty(String)` requires `system.property.write` for that key
+
+Examples:
+```
+entitle module to system.property.read;                    // Any property, including bulk
+entitle module to system.property.read("java.home");       // Only java.home
+entitle module to system.property.write("app.**");         // Write app.* hierarchy
+```
 
 Implementations MUST reject entitlement declarations whose arguments do not conform to the capability's signature.
 

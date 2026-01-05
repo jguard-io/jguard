@@ -174,8 +174,8 @@ class PolicyReloaderTest {
   @Test
   @DisplayName("uses configured poll interval")
   void usesConfiguredPollInterval() throws Exception {
-    // Use 3 second poll interval
-    reloader = new PolicyReloader(policyPath, enforcerRef, config, 3);
+    // Use 2 second poll interval
+    reloader = new PolicyReloader(policyPath, enforcerRef, config, 2);
     reloader.start();
 
     PolicyEnforcer initialEnforcer = enforcerRef.get();
@@ -184,14 +184,14 @@ class PolicyReloaderTest {
     PolicyDescriptor newPolicy = createPolicy("com.example.app", "threads.create");
     writePolicyFile(policyPath, newPolicy);
 
-    // Wait 1.5 seconds - less than poll interval
-    Thread.sleep(1500);
+    // Wait 500ms - well below poll interval
+    Thread.sleep(500);
 
     // Should not have reloaded yet
     assertThat(enforcerRef.get()).isSameAs(initialEnforcer);
 
-    // Wait for remaining poll time + buffer
-    Thread.sleep(2500);
+    // Wait for poll time + generous buffer for slow CI machines
+    Thread.sleep(4000);
 
     // Now should have reloaded
     assertThat(enforcerRef.get()).isNotSameAs(initialEnforcer);

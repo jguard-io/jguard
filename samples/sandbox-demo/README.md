@@ -91,8 +91,16 @@ jGuard enforces your policy transparently—if the code is entitled, it runs; if
 | `network.listen(port?)` | Listen on a port (optional port or range like `"8080-8090"`) |
 | `threads.create` | Create threads |
 | `native.load(pattern?)` | Load native libraries (optional pattern) |
+| `env.read(pattern?)` | Read environment variables (optional pattern) |
+| `system.property.read(pattern?)` | Read system properties (optional pattern) |
+| `system.property.write(pattern?)` | Write system properties (optional pattern) |
 
 Host patterns: `*` matches one DNS segment, `**` matches one or more. Example: `*.example.com`
+
+Target patterns for `env.read`, `system.property.*`, `native.load`:
+- No arg or `*` — any target (also grants bulk API access)
+- `HOME` — exact match
+- `app.**` — matches `app` and all descendants
 
 ### Host/Port Filtering Example
 
@@ -213,7 +221,8 @@ sandbox-demo/
     │       │   └── restricted/
     │       │       └── RestrictedNetworkClient.java # Entitled to *.example.com:80-443 only
     │       ├── worker/BackgroundWorker.java       # Entitled to threads.create
-    │       └── nativelib/NativeLoader.java        # Entitled to native.load
+    │       ├── nativelib/NativeLoader.java        # Entitled to native.load
+    │       └── config/ConfigReader.java           # Entitled to env.read, system.property.write("app.**")
     └── test/java/
         └── org/jguard/samples/sandbox/
             └── EntitlementTest.java

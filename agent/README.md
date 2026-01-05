@@ -209,6 +209,28 @@ Runtime native loading is instrumented:
 - `Runtime.loadLibrary(String)`
 - `Runtime.load(String)`
 
+## Instrumented Classes (Environment Variables)
+
+### java.lang.System
+
+Environment variable access is instrumented:
+
+- `System.getenv()` — bulk read (requires no-arg or `*` entitlement)
+- `System.getenv(String)` — single variable read
+
+## Instrumented Classes (System Properties)
+
+### java.lang.System
+
+System property access is instrumented:
+
+- `System.getProperty(String)` — single property read
+- `System.getProperty(String, String)` — single property read with default
+- `System.getProperties()` — bulk read (requires no-arg or `*` entitlement)
+- `System.setProperty(String, String)` — single property write
+- `System.setProperties(Properties)` — bulk write (requires no-arg or `*` entitlement)
+- `System.clearProperty(String)` — single property removal (write)
+
 ## Limitations
 
 ### Current Scope
@@ -221,12 +243,23 @@ The following capabilities are fully enforced:
 - `network.listen(portSpec?)` — server socket binding with optional port or port range
 - `threads.create` — thread creation
 - `native.load(pattern?)` — native library loading
+- `env.read(pattern?)` — environment variable read access
+- `system.property.read(pattern?)` — system property read access
+- `system.property.write(pattern?)` — system property write access
 
 **Host patterns** for `network.outbound`:
 - `*` matches exactly one DNS segment (e.g., `*.example.com` matches `api.example.com`)
 - `**` matches one or more DNS segments (e.g., `**.example.com` matches `a.b.c.example.com`)
 
 **Port specs** can be integers (`443`) or ranges (`"8080-8090"`).
+
+**Target patterns** for `env.read`, `system.property.read/write`, `native.load`:
+- No argument or `*` — matches any target (also grants bulk API access)
+- `HOME` — exact match for specific target
+- `app.**` — matches `app` and all descendants (e.g., `app.config.setting`)
+- `app.*` — matches direct children only (e.g., `app.config` but not `app.config.setting`)
+
+**Bulk API gating**: Methods like `System.getenv()`, `System.getProperties()`, and `System.setProperties()` require no-arg or `*` entitlement. Specific patterns do not grant bulk access.
 
 ### JVM Bootstrap Operations
 

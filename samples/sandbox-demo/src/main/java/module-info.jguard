@@ -32,4 +32,20 @@ security module org.jguard.samples.sandbox {
     // Grant native library loading to the nativelib package
     entitle org.jguard.samples.sandbox.nativelib.. to native.load;
 
+    // Grant system property read access for the module
+    // This is needed because:
+    // 1. JDK classes read properties during class initialization (e.g., java.net.InetAddress)
+    // 2. These reads are attributed to the application code that triggered the initialization
+    // 3. The demo uses paths from user.home and java.io.tmpdir
+    // In production, you may want to use more specific patterns.
+    entitle module to system.property.read;
+
+    // Grant environment variable read access to specific package
+    // The .config package can read any env var
+    entitle org.jguard.samples.sandbox.config to env.read;
+
+    // Grant system property write access to specific package
+    // The .config package can write properties matching "app.**" (any depth)
+    entitle org.jguard.samples.sandbox.config to system.property.write("app.**");
+
 }

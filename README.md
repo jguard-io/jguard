@@ -132,6 +132,9 @@ Examples include:
 * `network.listen(portSpec?)` — bind server sockets to ports (supports port ranges)
 * `threads.create` — create new threads
 * `native.load(pattern?)` — load native libraries
+* `env.read(pattern?)` — read environment variables
+* `system.property.read(pattern?)` — read system properties
+* `system.property.write(pattern?)` — write system properties
 
 **Host patterns** for `network.outbound`:
 * `*` — matches one DNS segment (e.g., `*.example.com`)
@@ -151,6 +154,8 @@ jGuard enforces policy at a small number of high-impact guard points:
 * outbound network connections
 * thread creation and management
 * native library loading
+* environment variable access
+* system property access
 
 At runtime:
 
@@ -276,6 +281,8 @@ Completed:
 * Network enforcement (`network.outbound`, `network.listen`)
 * Thread creation enforcement (`threads.create`)
 * Native library loading enforcement (`native.load`)
+* Environment variable access enforcement (`env.read`)
+* System property access enforcement (`system.property.read`, `system.property.write`)
 * Policy hot reload (update entitlements without restart)
 * Clear failure semantics with configurable modes (STRICT, PERMISSIVE, AUDIT)
 * Strong JPMS integration with module verification

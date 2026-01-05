@@ -68,7 +68,28 @@ public enum Operation {
    *
    * <p>Arguments: {@code arg0} = library name, {@code arg1} = 0
    */
-  NATIVE_LOAD("native.load", Category.TARGET_PATTERN);
+  NATIVE_LOAD("native.load", Category.TARGET_PATTERN),
+
+  /**
+   * Environment variable read.
+   *
+   * <p>Arguments: {@code arg0} = env var name (null for bulk getenv()), {@code arg1} = 0
+   */
+  ENV_READ("env.read", Category.TARGET_PATTERN),
+
+  /**
+   * System property read.
+   *
+   * <p>Arguments: {@code arg0} = property key (null for bulk getProperties()), {@code arg1} = 0
+   */
+  PROP_READ("system.property.read", Category.TARGET_PATTERN),
+
+  /**
+   * System property write.
+   *
+   * <p>Arguments: {@code arg0} = property key (null for bulk setProperties()), {@code arg1} = 0
+   */
+  PROP_WRITE("system.property.write", Category.TARGET_PATTERN);
 
   /**
    * Categories determine matching logic in PolicyEnforcer.
@@ -117,8 +138,12 @@ public enum Operation {
     /**
      * Target pattern capabilities with optional pattern matching.
      *
-     * <p>Policy args: none (any target) or {@code (pattern)} for specific targets. Use for
-     * reflection, native loading, process execution, etc.
+     * <p>Policy args: none (any target) or {@code (pattern)} for specific targets. Use for native
+     * loading, environment variable access, system property access, etc.
+     *
+     * <p>When {@code arg0} is null, it indicates a bulk access (e.g., {@code System.getenv()},
+     * {@code System.getProperties()}). Bulk access requires no-arg entitlement or {@code "*"}
+     * pattern.
      */
     TARGET_PATTERN
   }
