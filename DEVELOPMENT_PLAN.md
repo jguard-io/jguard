@@ -340,10 +340,49 @@ Exit criteria:
 
 ---
 
+### M4.7 — Environment Variable and System Property Access ✓
+
+Added enforcement for environment variable and system property access:
+
+* **`env.read(pattern?)`** — controls access to environment variables
+  * `env.read` (no args) - allows reading any env var and bulk access via `System.getenv()`
+  * `env.read("HOME")` - allows reading specific env var only
+  * `env.read("*")` - explicit wildcard for any env var
+  * Bulk access (`System.getenv()` with no args) requires no-arg or `*` entitlement
+
+* **`system.property.read(pattern?)`** — controls access to system properties
+  * `system.property.read` (no args) - allows reading any property and bulk access
+  * `system.property.read("java.home")` - allows reading specific property only
+  * Bulk access (`System.getProperties()`) requires no-arg or `*` entitlement
+
+* **`system.property.write(pattern?)`** — controls modification of system properties
+  * `system.property.write` (no args) - allows writing any property and bulk access
+  * `system.property.write("app.config")` - allows writing specific property only
+  * Bulk access (`System.setProperties()`) requires no-arg or `*` entitlement
+  * `System.clearProperty()` also requires write permission
+
+Implementation:
+
+* Reuses `TARGET_PATTERN` category with bulk access gating
+* Reentrancy guard prevents recursion when jGuard reads properties internally
+* Empty pattern validation prevents accidental policy bypass
+* Instrumented methods:
+  * `System.getenv()`, `System.getenv(String)`
+  * `System.getProperty(String)`, `System.getProperty(String, String)`, `System.getProperties()`
+  * `System.setProperty(String, String)`, `System.setProperties(Properties)`, `System.clearProperty(String)`
+
+Exit criteria:
+
+* demonstrable prevention of unauthorized env var access ✓
+* demonstrable prevention of unauthorized property access ✓
+* bulk APIs properly gated ✓
+
+---
+
 ### M5 — Integration proof ✓
 
 * `samples/sandbox-demo` demonstrates full integration
-* Policy-driven behavior change across all 6 capabilities
+* Policy-driven behavior change across all 9 capabilities
 * Entitled vs unentitled operations clearly demonstrated
 * `./gradlew runWithAgent` for enforcement testing
 
@@ -386,6 +425,9 @@ Remaining for v0.1.0 release:
 | `network.listen(port?)` | ✓ | PORT |
 | `threads.create` | ✓ | SIMPLE |
 | `native.load(pattern?)` | ✓ | TARGET_PATTERN |
+| `env.read(pattern?)` | ✓ | TARGET_PATTERN |
+| `system.property.read(pattern?)` | ✓ | TARGET_PATTERN |
+| `system.property.write(pattern?)` | ✓ | TARGET_PATTERN |
 
 Additional features:
 
@@ -398,6 +440,8 @@ Additional features:
 | Comprehensive documentation | ✓ |
 | Network host/port filtering | ✓ |
 | Port range support | ✓ |
+| Env/property access control | ✓ |
+| Bulk API gating (getenv(), getProperties()) | ✓ |
 
 ---
 
@@ -444,7 +488,6 @@ Instrumented APIs:
 
 Potential additions:
 
-* `env.read` / `env.write` — environment variable access
 * `classloader.create` — custom classloader creation
-* `system.property.read` / `system.property.write` — system property access
+* `serialization.read` / `serialization.write` — object serialization control
 

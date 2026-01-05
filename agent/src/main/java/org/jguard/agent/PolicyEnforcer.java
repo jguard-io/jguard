@@ -355,9 +355,23 @@ public final class PolicyEnforcer {
   /**
    * Handles TARGET_PATTERN category - optional pattern restriction.
    *
-   * <p>Used for: reflect.invoke, native.load, process.exec, etc.
+   * <p>Used for: native.load, env.read, system.property.read/write, etc.
+   *
+   * <h2>Bulk Access</h2>
+   *
+   * <p>When {@code target} is null, it indicates bulk access (e.g., {@code System.getenv()}, {@code
+   * System.getProperties()}). Bulk access requires either:
+   *
+   * <ul>
+   *   <li>No-arg entitlement (e.g., {@code env.read}) - grants access to all targets
+   *   <li>Wildcard pattern (e.g., {@code env.read("*")}) - explicit wildcard
+   * </ul>
+   *
+   * <p>Specific pattern entitlements like {@code env.read("HOME")} do NOT grant bulk access.
    */
   private boolean isAllowedTargetPattern(String callerPackage, String target, String capability) {
+    boolean isBulkAccess = (target == null);
+
     for (Entitlement entitlement : policy.entitlements()) {
       if (!entitlement.capability().name().equals(capability)) {
         continue;
@@ -368,17 +382,32 @@ public final class PolicyEnforcer {
 
       List<CapabilityArgument> args = entitlement.capability().arguments();
       if (args.isEmpty()) {
-        // No arguments - allows any target
+        // No arguments - allows any target (including bulk access)
         LOG.debug(
             "{} allowed (any target): package={}, target={}, entitlement={}",
             capability,
             callerPackage,
-            target,
+            target != null ? target : "bulk",
             entitlement);
         return true;
       } else if (args.size() == 1) {
-        // Pattern restriction - match target against pattern
         String pattern = ((CapabilityArgument.StringArg) args.get(0)).value();
+
+        // For bulk access, only no-arg or "*" pattern grants access
+        if (isBulkAccess) {
+          if ("*".equals(pattern)) {
+            LOG.debug(
+                "{} allowed (bulk, wildcard): package={}, entitlement={}",
+                capability,
+                callerPackage,
+                entitlement);
+            return true;
+          }
+          // Continue checking other entitlements - a specific pattern doesn't grant bulk access
+          continue;
+        }
+
+        // Pattern restriction - match target against pattern
         if (targetMatchesPattern(target, pattern)) {
           LOG.debug(
               "{} allowed (pattern match): package={}, target={}, pattern={}, entitlement={}",
@@ -392,17 +421,23 @@ public final class PolicyEnforcer {
       }
     }
 
-    LOG.debug("{} denied: package={}, target={}", capability, callerPackage, target);
+    LOG.debug(
+        "{} denied: package={}, target={}",
+        capability,
+        callerPackage,
+        target != null ? target : "bulk");
     return false;
   }
 
   /**
-   * Matches a target (class name, library path, etc.) against a pattern.
+   * Matches a target (env var name, property key, library path, etc.) against a pattern.
    *
    * <p>Pattern syntax:
    *
    * <ul>
-   *   <li>{@code com.example.Foo} - exact match
+   *   <li>{@code *} - matches any target
+   *   <li>{@code HOME} - exact match for simple names (env vars, properties)
+   *   <li>{@code com.example.Foo} - exact match for dotted names
    *   <li>{@code com.example.*} - matches direct children (com.example.Foo, not
    *       com.example.sub.Bar)
    *   <li>{@code com.example.**} - matches all descendants
@@ -411,6 +446,10 @@ public final class PolicyEnforcer {
   private boolean targetMatchesPattern(String target, String pattern) {
     if (target == null) {
       return false;
+    }
+    // Wildcard matches any non-null target
+    if ("*".equals(pattern)) {
+      return true;
     }
     if (pattern.endsWith(".**")) {
       String prefix = pattern.substring(0, pattern.length() - 3);

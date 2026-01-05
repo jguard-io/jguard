@@ -1007,6 +1007,234 @@ class PolicyEnforcerTest {
   }
 
   @Nested
+  @DisplayName("TARGET_PATTERN bulk access (env.read, system.property.read/write)")
+  class TargetPatternBulkAccessTest {
+
+    /** Helper for env.read operations. */
+    private void checkEnvRead(PolicyEnforcer enforcer, CallerContext caller, String name) {
+      SecurityException denial = enforcer.check(caller, Operation.ENV_READ, name, 0);
+      if (denial != null) {
+        throw denial;
+      }
+    }
+
+    /** Helper for system.property.read operations. */
+    private void checkPropertyRead(PolicyEnforcer enforcer, CallerContext caller, String key) {
+      SecurityException denial = enforcer.check(caller, Operation.PROP_READ, key, 0);
+      if (denial != null) {
+        throw denial;
+      }
+    }
+
+    /** Helper for system.property.write operations. */
+    private void checkPropertyWrite(PolicyEnforcer enforcer, CallerContext caller, String key) {
+      SecurityException denial = enforcer.check(caller, Operation.PROP_WRITE, key, 0);
+      if (denial != null) {
+        throw denial;
+      }
+    }
+
+    @Test
+    @DisplayName("env.read allows bulk access with no-arg entitlement")
+    void envReadAllowsBulkAccessNoArg() {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("env.read"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // null = bulk access (System.getenv())
+      assertThatCode(() -> checkEnvRead(enforcer, caller("com.example.app"), null))
+          .doesNotThrowAnyException();
+      // Single access also allowed
+      assertThatCode(() -> checkEnvRead(enforcer, caller("com.example.app"), "HOME"))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("env.read allows bulk access with * pattern")
+    void envReadAllowsBulkAccessWildcard() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of("env.read", List.of(new CapabilityArgument.StringArg("*"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // null = bulk access
+      assertThatCode(() -> checkEnvRead(enforcer, caller("com.example.app"), null))
+          .doesNotThrowAnyException();
+      // Single access also allowed
+      assertThatCode(() -> checkEnvRead(enforcer, caller("com.example.app"), "PATH"))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("env.read denies bulk access with specific pattern")
+    void envReadDeniesBulkAccessSpecificPattern() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of("env.read", List.of(new CapabilityArgument.StringArg("HOME"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // null = bulk access - DENIED
+      assertThatThrownBy(() -> checkEnvRead(enforcer, caller("com.example.app"), null))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("env.read");
+
+      // Single access to matching name allowed
+      assertThatCode(() -> checkEnvRead(enforcer, caller("com.example.app"), "HOME"))
+          .doesNotThrowAnyException();
+
+      // Single access to non-matching name denied
+      assertThatThrownBy(() -> checkEnvRead(enforcer, caller("com.example.app"), "PATH"))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("system.property.read allows bulk access with no-arg entitlement")
+    void propReadAllowsBulkAccessNoArg() {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("system.property.read"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // null = bulk access (System.getProperties())
+      assertThatCode(() -> checkPropertyRead(enforcer, caller("com.example.app"), null))
+          .doesNotThrowAnyException();
+      // Single access also allowed
+      assertThatCode(() -> checkPropertyRead(enforcer, caller("com.example.app"), "java.home"))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("system.property.read allows bulk access with * pattern")
+    void propReadAllowsBulkAccessWildcard() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "system.property.read", List.of(new CapabilityArgument.StringArg("*"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // null = bulk access
+      assertThatCode(() -> checkPropertyRead(enforcer, caller("com.example.app"), null))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("system.property.read denies bulk access with specific pattern")
+    void propReadDeniesBulkAccessSpecificPattern() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "system.property.read", List.of(new CapabilityArgument.StringArg("java.home"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // null = bulk access - DENIED
+      assertThatThrownBy(() -> checkPropertyRead(enforcer, caller("com.example.app"), null))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("system.property.read");
+
+      // Single access to matching key allowed
+      assertThatCode(() -> checkPropertyRead(enforcer, caller("com.example.app"), "java.home"))
+          .doesNotThrowAnyException();
+
+      // Single access to non-matching key denied
+      assertThatThrownBy(() -> checkPropertyRead(enforcer, caller("com.example.app"), "user.home"))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("system.property.write allows bulk access with no-arg entitlement")
+    void propWriteAllowsBulkAccessNoArg() {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("system.property.write"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // null = bulk access (System.setProperties())
+      assertThatCode(() -> checkPropertyWrite(enforcer, caller("com.example.app"), null))
+          .doesNotThrowAnyException();
+      // Single access also allowed
+      assertThatCode(() -> checkPropertyWrite(enforcer, caller("com.example.app"), "app.config"))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("system.property.write denies bulk access with specific pattern")
+    void propWriteDeniesBulkAccessSpecificPattern() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of(
+                  "system.property.write",
+                  List.of(new CapabilityArgument.StringArg("app.config"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // null = bulk access - DENIED
+      assertThatThrownBy(() -> checkPropertyWrite(enforcer, caller("com.example.app"), null))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("system.property.write");
+
+      // Single access to matching key allowed
+      assertThatCode(() -> checkPropertyWrite(enforcer, caller("com.example.app"), "app.config"))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("respects package scope for env.read")
+    void respectsPackageScopeForEnvRead() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.exactPackage("com.example.app.config"),
+              CapabilityGrant.of("env.read"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Entitled package allowed
+      assertThatCode(() -> checkEnvRead(enforcer, caller("com.example.app.config"), "HOME"))
+          .doesNotThrowAnyException();
+
+      // Other packages denied
+      assertThatThrownBy(() -> checkEnvRead(enforcer, caller("com.example.app"), "HOME"))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("native.load * pattern matches any target")
+    void nativeLoadWildcardMatchesAny() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.module(),
+              CapabilityGrant.of("native.load", List.of(new CapabilityArgument.StringArg("*"))));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Any library name should be allowed
+      assertThatCode(() -> checkNativeLoad(enforcer, caller("com.example.app"), "libcrypto"))
+          .doesNotThrowAnyException();
+      assertThatCode(() -> checkNativeLoad(enforcer, caller("com.example.app"), "anything.at.all"))
+          .doesNotThrowAnyException();
+    }
+  }
+
+  @Nested
   @DisplayName("PORT category with ranges (network.listen)")
   class PortRangeOperationTest {
 

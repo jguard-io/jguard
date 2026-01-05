@@ -84,7 +84,7 @@ public final class BootstrapEnforcer {
   private static volatile String[] skipPrefixes = DEFAULT_SKIP_PREFIXES;
 
   /** Flag to prevent re-entrant calls during enforcement. */
-  private static final ThreadLocal<Boolean> IN_ENFORCEMENT = ThreadLocal.withInitial(() -> false);
+  private static final ThreadLocal<Boolean> IN_ENFORCEMENT = new ThreadLocal<>();
 
   private BootstrapEnforcer() {}
 
@@ -280,6 +280,37 @@ public final class BootstrapEnforcer {
     dispatch(Operation.NATIVE_LOAD, libraryName != null ? libraryName : "unknown", 0);
   }
 
+  // ========== ENVIRONMENT VARIABLE ENTRY POINTS ==========
+
+  /**
+   * Called by ByteBuddy advice when an environment variable is being read.
+   *
+   * @param name the env var name, or null if reading all (System.getenv())
+   */
+  public static void onEnvRead(String name) {
+    dispatch(Operation.ENV_READ, name, 0);
+  }
+
+  // ========== SYSTEM PROPERTY ENTRY POINTS ==========
+
+  /**
+   * Called by ByteBuddy advice when a system property is being read.
+   *
+   * @param key the property key, or null if reading all (System.getProperties())
+   */
+  public static void onPropertyRead(String key) {
+    dispatch(Operation.PROP_READ, key, 0);
+  }
+
+  /**
+   * Called by ByteBuddy advice when a system property is being written.
+   *
+   * @param key the property key, or null if replacing all (System.setProperties())
+   */
+  public static void onPropertyWrite(String key) {
+    dispatch(Operation.PROP_WRITE, key, 0);
+  }
+
   // ========== SINGLE DISPATCH ==========
 
   /**
@@ -307,10 +338,10 @@ public final class BootstrapEnforcer {
     }
 
     try {
-      IN_ENFORCEMENT.set(true);
+      IN_ENFORCEMENT.set(Boolean.TRUE);
       enforce(op, arg0, arg1, cb);
     } finally {
-      IN_ENFORCEMENT.set(false);
+      IN_ENFORCEMENT.remove();
     }
   }
 

@@ -485,6 +485,155 @@ class PolicyValidatorTest {
   }
 
   @Nested
+  class EnvAndPropertyValidationTest {
+
+    @Test
+    void acceptsEnvReadWithNoArgs() {
+      EntitlementDeclaration entitlement = moduleEntitlement("env.read");
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void acceptsEnvReadWithPattern() {
+      EntitlementDeclaration entitlement = moduleEntitlement("env.read", stringArg("HOME"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void acceptsEnvReadWithWildcard() {
+      EntitlementDeclaration entitlement = moduleEntitlement("env.read", stringArg("*"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void rejectsEnvReadWithEmptyPattern() {
+      EntitlementDeclaration entitlement = moduleEntitlement("env.read", stringArg(""));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics())
+          .anyMatch(d -> d.message().contains("Empty pattern") && d.message().contains("env.read"));
+    }
+
+    @Test
+    void acceptsSystemPropertyReadWithNoArgs() {
+      EntitlementDeclaration entitlement = moduleEntitlement("system.property.read");
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void acceptsSystemPropertyReadWithPattern() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("system.property.read", stringArg("java.home"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void rejectsSystemPropertyReadWithEmptyPattern() {
+      EntitlementDeclaration entitlement = moduleEntitlement("system.property.read", stringArg(""));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics())
+          .anyMatch(
+              d ->
+                  d.message().contains("Empty pattern")
+                      && d.message().contains("system.property.read"));
+    }
+
+    @Test
+    void acceptsSystemPropertyWriteWithNoArgs() {
+      EntitlementDeclaration entitlement = moduleEntitlement("system.property.write");
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void acceptsSystemPropertyWriteWithPattern() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("system.property.write", stringArg("app.config"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void rejectsSystemPropertyWriteWithEmptyPattern() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("system.property.write", stringArg(""));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics())
+          .anyMatch(
+              d ->
+                  d.message().contains("Empty pattern")
+                      && d.message().contains("system.property.write"));
+    }
+
+    @Test
+    void rejectsNativeLoadWithEmptyPattern() {
+      EntitlementDeclaration entitlement = moduleEntitlement("native.load", stringArg(""));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics())
+          .anyMatch(
+              d -> d.message().contains("Empty pattern") && d.message().contains("native.load"));
+    }
+
+    @Test
+    void rejectsEnvReadWithIntegerArg() {
+      // env.read must take a string argument, not integer
+      EntitlementDeclaration entitlement = moduleEntitlement("env.read", intArg(123));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("must be string"));
+    }
+
+    @Test
+    void rejectsEnvReadWithTooManyArgs() {
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("env.read", stringArg("HOME"), stringArg("extra"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("requires 0 to 1"));
+    }
+  }
+
+  @Nested
   class NetworkListenSemanticValidationTest {
 
     @Test

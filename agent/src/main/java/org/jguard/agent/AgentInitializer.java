@@ -12,6 +12,7 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
 import static net.bytebuddy.matcher.ElementMatchers.none;
 import static net.bytebuddy.matcher.ElementMatchers.takesArgument;
 import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
+import static net.bytebuddy.matcher.ElementMatchers.takesNoArguments;
 
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
@@ -367,17 +368,63 @@ public final class AgentInitializer {
                     Advice.to(ThreadInterceptor.ThreadStartAdvice.class)
                         .on(named("start").and(takesArguments(0)))))
         // ========== NATIVE LIBRARY INSTRUMENTATION (native.load) ==========
-        // Instrument java.lang.System - native library loading
+        // Instrument java.lang.System - native library loading, env, and property access
         .type(named("java.lang.System"))
         .transform(
             (builder, typeDescription, classLoader, module, protectionDomain) ->
                 builder
+                    // Native library loading
                     .visit(
                         Advice.to(NativeInterceptor.LoadLibraryAdvice.class)
                             .on(named("loadLibrary").and(takesArgument(0, String.class))))
                     .visit(
                         Advice.to(NativeInterceptor.LoadAdvice.class)
-                            .on(named("load").and(takesArgument(0, String.class)))))
+                            .on(named("load").and(takesArgument(0, String.class))))
+                    // ========== ENVIRONMENT VARIABLE ACCESS (env.read) ==========
+                    // System.getenv() - bulk read (returns Map<String, String>)
+                    .visit(
+                        Advice.to(EnvInterceptor.GetEnvAllAdvice.class)
+                            .on(named("getenv").and(takesNoArguments())))
+                    // System.getenv(String) - single variable read
+                    .visit(
+                        Advice.to(EnvInterceptor.GetEnvAdvice.class)
+                            .on(named("getenv").and(takesArgument(0, String.class))))
+                    // ========== SYSTEM PROPERTY ACCESS (system.property.read/write) ==========
+                    // System.getProperty(String) - single property read
+                    .visit(
+                        Advice.to(PropertyInterceptor.GetPropertyAdvice.class)
+                            .on(
+                                named("getProperty")
+                                    .and(takesArgument(0, String.class))
+                                    .and(takesArguments(1))))
+                    // System.getProperty(String, String) - single property read with default
+                    .visit(
+                        Advice.to(PropertyInterceptor.GetPropertyAdvice.class)
+                            .on(
+                                named("getProperty")
+                                    .and(takesArgument(0, String.class))
+                                    .and(takesArgument(1, String.class))))
+                    // System.getProperties() - bulk property read
+                    .visit(
+                        Advice.to(PropertyInterceptor.GetPropertiesAdvice.class)
+                            .on(named("getProperties").and(takesNoArguments())))
+                    // System.setProperty(String, String) - single property write
+                    .visit(
+                        Advice.to(PropertyInterceptor.SetPropertyAdvice.class)
+                            .on(
+                                named("setProperty")
+                                    .and(takesArgument(0, String.class))
+                                    .and(takesArgument(1, String.class))))
+                    // System.setProperties(Properties) - bulk property write
+                    .visit(
+                        Advice.to(PropertyInterceptor.SetPropertiesAdvice.class)
+                            .on(
+                                named("setProperties")
+                                    .and(takesArguments(java.util.Properties.class))))
+                    // System.clearProperty(String) - single property removal (write)
+                    .visit(
+                        Advice.to(PropertyInterceptor.ClearPropertyAdvice.class)
+                            .on(named("clearProperty").and(takesArgument(0, String.class)))))
         // Instrument java.lang.Runtime - native library loading (delegates to System)
         .type(named("java.lang.Runtime"))
         .transform(
@@ -403,7 +450,8 @@ public final class AgentInitializer {
       // Log discovery of classes we're interested in
       if (typeName.contains("Socket")
           || typeName.contains("ServerSocket")
-          || typeName.contains("Files")) {
+          || typeName.contains("Files")
+          || typeName.equals("java.lang.System")) {
         LOG.debug("Discovered: {} (loaded={})", typeName, loaded);
       }
     }
@@ -426,7 +474,9 @@ public final class AgentInitializer {
         boolean loaded) {
       // Log ignored classes we're interested in
       String name = typeDescription.getName();
-      if (name.contains("Socket") || name.equals("java.nio.file.Files")) {
+      if (name.contains("Socket")
+          || name.equals("java.nio.file.Files")
+          || name.equals("java.lang.System")) {
         LOG.debug("Ignored: {} (loaded={})", name, loaded);
       }
     }

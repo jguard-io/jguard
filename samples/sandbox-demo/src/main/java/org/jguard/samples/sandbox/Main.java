@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.jguard.core.JGuard;
+import org.jguard.samples.sandbox.config.ConfigReader;
 import org.jguard.samples.sandbox.nativelib.NativeLoader;
 import org.jguard.samples.sandbox.net.NetworkClient;
 import org.jguard.samples.sandbox.net.NetworkServer;
@@ -38,6 +39,10 @@ import org.jguard.samples.sandbox.worker.BackgroundWorker;
  *   <li>network.listen - server socket binding (from org.jguard.samples.sandbox.net package)
  *   <li>threads.create - thread creation (from org.jguard.samples.sandbox.worker package)
  *   <li>native.load - native library loading (from org.jguard.samples.sandbox.nativelib package)
+ *   <li>env.read - environment variable access (from org.jguard.samples.sandbox.config package)
+ *   <li>system.property.read - system property read access (module-wide)
+ *   <li>system.property.write("app.**") - system property write with pattern (from
+ *       org.jguard.samples.sandbox.config package)
  * </ul>
  *
  * <h2>Running without the agent (no enforcement):</h2>
@@ -140,6 +145,22 @@ public final class Main {
 
     // Test 19: Native library load from non-entitled package (NOT ENTITLED)
     demonstrateUnentitledNativeAccess();
+
+    // === ENV/PROPERTY TESTS ===
+    System.out.println("--- ENV/PROPERTY TESTS ---");
+    System.out.println();
+
+    // Test 20: Env var read from entitled package (ENTITLED)
+    demonstrateEntitledEnvAccess();
+
+    // Test 21: Env var read from non-entitled package (NOT ENTITLED)
+    demonstrateUnentitledEnvAccess();
+
+    // Test 22: Property write from entitled package with matching pattern (ENTITLED)
+    demonstrateEntitledPropertyWrite();
+
+    // Test 23: Property write from entitled package with non-matching pattern (NOT ENTITLED)
+    demonstrateUnentitledPropertyWrite();
   }
 
   /**
@@ -630,6 +651,99 @@ public final class Main {
       // Library doesn't exist but operation was allowed - unexpected!
       System.out.println("  SUCCESS: Load attempt allowed (library not found)");
       System.out.println("  (This should be BLOCKED when running with the agent!)");
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates environment variable reading from entitled package.
+   *
+   * <p>This operation IS entitled because it's called from the .config package which has env.read
+   * entitlement.
+   */
+  private static void demonstrateEntitledEnvAccess() {
+    System.out.println("[ENTITLED] env.read (from .config package)");
+    System.out.println("  Attempting to read HOME environment variable...");
+
+    ConfigReader.ConfigResult result = ConfigReader.readEnv("HOME");
+
+    if (result.allowed()) {
+      String value = result.value();
+      String display = value != null ? value : "(not set)";
+      System.out.println("  SUCCESS: HOME = " + display);
+    } else {
+      System.out.println("  BLOCKED (unexpected): " + result.message());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates environment variable reading from non-entitled package.
+   *
+   * <p>This operation is NOT entitled because Main is in the sandbox package, not the .config
+   * package. It should be blocked when the agent is active.
+   */
+  private static void demonstrateUnentitledEnvAccess() {
+    System.out.println("[NOT ENTITLED] env.read (from main package)");
+    System.out.println("  Attempting to read PATH environment variable directly...");
+
+    try {
+      // This call is made FROM this class (Main) which is in the .sandbox package
+      // which does NOT have env.read entitlement
+      String path = System.getenv("PATH");
+      System.out.println("  SUCCESS: PATH = " + (path != null ? path.substring(0, Math.min(50, path.length())) + "..." : "(not set)"));
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (expected): " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates system property writing from entitled package with matching pattern.
+   *
+   * <p>This operation IS entitled because it's called from the .config package which has
+   * system.property.write("app.**") entitlement, and "app.demo.setting" matches "app.**".
+   */
+  private static void demonstrateEntitledPropertyWrite() {
+    System.out.println("[ENTITLED] system.property.write(\"app.**\") (from .config package)");
+    System.out.println("  Attempting to set app.demo.setting property...");
+
+    ConfigReader.ConfigResult result = ConfigReader.writeProperty("app.demo.setting", "test-value");
+
+    if (result.allowed()) {
+      System.out.println("  SUCCESS: " + result.message());
+      // Verify the value was set
+      String value = System.getProperty("app.demo.setting");
+      System.out.println("  Verified: System.getProperty(\"app.demo.setting\") = " + value);
+    } else {
+      System.out.println("  BLOCKED (unexpected): " + result.message());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates system property writing from entitled package with NON-matching pattern.
+   *
+   * <p>This operation is NOT entitled because even though the .config package has
+   * system.property.write("app.**") entitlement, "java.home" does NOT match "app.**".
+   */
+  private static void demonstrateUnentitledPropertyWrite() {
+    System.out.println("[NOT ENTITLED] system.property.write to non-matching pattern");
+    System.out.println("  Attempting to set java.home property from .config package...");
+    System.out.println("  (Policy only allows writing properties matching \"app.**\")");
+
+    ConfigReader.ConfigResult result = ConfigReader.writeProperty("java.home", "/malicious/path");
+
+    if (result.allowed()) {
+      System.out.println("  SUCCESS: Write allowed (unexpected!)");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+    } else {
+      System.out.println("  BLOCKED (expected): Property 'java.home' doesn't match 'app.**'");
     }
 
     System.out.println();
