@@ -1,4 +1,21 @@
-## jGuard
+<p align="center">
+  <img src="https://lucenia.io/wp-content/uploads/2026/01/JGuard-Logo-Name-1200x400-1.png" alt="jGuard" width="600">
+</p>
+
+<p align="center">
+  <strong>Capability-based security for the modern JVM</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/lucenia/jguard/actions/workflows/ci.yml"><img src="https://github.com/lucenia/jguard/actions/workflows/ci.yml/badge.svg" alt="Build Status"></a>
+  <a href="https://github.com/lucenia/jguard/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://www.oracle.com/java/technologies/javase/jdk21-archive-downloads.html"><img src="https://img.shields.io/badge/Java-21%2B-orange.svg" alt="Java 21+"></a>
+  <a href="https://github.com/lucenia/jguard/issues"><img src="https://img.shields.io/github/issues/lucenia/jguard" alt="GitHub Issues"></a>
+  <a href="https://github.com/lucenia/jguard/pulls"><img src="https://img.shields.io/github/issues-pr/lucenia/jguard" alt="GitHub Pull Requests"></a>
+  <a href="https://github.com/lucenia/jguard/graphs/contributors"><img src="https://img.shields.io/github/contributors/lucenia/jguard" alt="Contributors"></a>
+</p>
+
+---
 
 **jGuard is a capability-based security framework for the modern JVM (JDK 21+).**
 
