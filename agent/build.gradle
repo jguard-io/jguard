@@ -44,16 +44,16 @@ shadowJar {
 
   manifest {
     attributes(
-      "Premain-Class": "org.jguard.agent.JGuardAgent",
-      "Agent-Class": "org.jguard.agent.JGuardAgent",
+      "Premain-Class": "io.jguard.agent.JGuardAgent",
+      "Agent-Class": "io.jguard.agent.JGuardAgent",
       "Can-Redefine-Classes": "true",
       "Can-Retransform-Classes": "true"
     )
   }
 
   // Relocate ByteBuddy and ASM to avoid conflicts with apps using different versions
-  relocate 'net.bytebuddy', 'org.jguard.internal.bytebuddy'
-  relocate 'org.objectweb.asm', 'org.jguard.internal.asm'
+  relocate 'net.bytebuddy', 'io.jguard.internal.bytebuddy'
+  relocate 'org.objectweb.asm', 'io.jguard.internal.asm'
 
   // CRITICAL: Exclude bootstrap classes from the shaded jar.
   // They must only exist in the embedded bootstrap.jar to ensure single type identity.

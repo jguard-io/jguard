@@ -25,8 +25,8 @@ dependencyResolutionManagement {
 // Include jGuard for runtime dependencies
 includeBuild("..") {
   dependencySubstitution {
-    substitute(module("org.jguard:core")).using(project(":core"))
-    substitute(module("org.jguard:policy")).using(project(":policy"))
+    substitute(module("io.jguard:core")).using(project(":core"))
+    substitute(module("io.jguard:policy")).using(project(":policy"))
   }
 }
 

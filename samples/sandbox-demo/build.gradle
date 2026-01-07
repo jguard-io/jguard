@@ -8,7 +8,7 @@
 plugins {
   id "java"
   id "application"
-  id "org.jguard.policy"
+  id "io.jguard.policy"
 }
 
 java {
@@ -18,8 +18,8 @@ java {
 }
 
 application {
-  mainClass = "org.jguard.samples.sandbox.Main"
-  mainModule = "org.jguard.samples.sandbox"
+  mainClass = "io.jguard.samples.sandbox.Main"
+  mainModule = "io.jguard.samples.sandbox"
 }
 
 repositories {
@@ -27,10 +27,10 @@ repositories {
 }
 
 dependencies {
-  implementation("org.jguard:core")
+  implementation("io.jguard:core")
 
   // The jguardAgent configuration is created by the plugin.
-  // For published versions, use: jguardAgent("org.jguard:agent:VERSION")
+  // For published versions, use: jguardAgent("io.jguard:agent:VERSION")
   // For local development with composite builds, the plugin auto-detects the agent JAR.
 
   testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
@@ -50,7 +50,7 @@ tasks.withType(Test).configureEach {
   }
 }
 
-// The runWithAgent task is now provided by the org.jguard.policy plugin!
+// The runWithAgent task is now provided by the io.jguard.policy plugin!
 // Usage:
 //   ./gradlew runWithAgent              - Run with agent enforcement
 //   ./gradlew runWithAgent -Pjguard.mode=audit  - Audit mode (log only)

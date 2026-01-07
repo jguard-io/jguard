@@ -131,7 +131,7 @@ Use the jGuard Gradle plugin instead of invoking `jguardc` directly:
 
 ```groovy
 plugins {
-    id 'org.jguard.policy'
+    id 'io.jguard.policy'
 }
 ```
 

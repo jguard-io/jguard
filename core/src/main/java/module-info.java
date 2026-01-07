@@ -1,3 +1,3 @@
-module org.jguard.core {
-  exports org.jguard.core;
+module io.jguard.core {
+  exports io.jguard.core;
 }

@@ -136,8 +136,8 @@ policy/src/main/java/org/jguard/policy/
 ### Compiling a Policy File
 
 ```java
-import org.jguard.policy.compiler.PolicyCompiler;
-import org.jguard.policy.compiler.CompilationResult;
+import io.jguard.policy.compiler.PolicyCompiler;
+import io.jguard.policy.compiler.CompilationResult;
 
 Path policyFile = Path.of("module-info.jguard");
 CompilationResult result = PolicyCompiler.compile(policyFile);
@@ -156,7 +156,7 @@ if (result.hasErrors()) {
 ### Serializing to JSON
 
 ```java
-import org.jguard.policy.serialization.JsonPolicyWriter;
+import io.jguard.policy.serialization.JsonPolicyWriter;
 
 String json = JsonPolicyWriter.toJson(policy);
 
@@ -169,7 +169,7 @@ try (OutputStream out = Files.newOutputStream(outputPath)) {
 ### Serializing to Binary
 
 ```java
-import org.jguard.policy.serialization.BinaryPolicyWriter;
+import io.jguard.policy.serialization.BinaryPolicyWriter;
 
 byte[] binary = BinaryPolicyWriter.toBytes(policy);
 
@@ -182,7 +182,7 @@ try (OutputStream out = Files.newOutputStream(outputPath)) {
 ### Building Policies Programmatically
 
 ```java
-import org.jguard.policy.model.*;
+import io.jguard.policy.model.*;
 
 PolicyDescriptor policy = PolicyDescriptor.create(
     "com.example.app",

@@ -13,6 +13,6 @@ rootProject.name = "sandbox-demo"
 
 includeBuild("../../") {
   dependencySubstitution {
-    substitute module("org.jguard:core") using project(":core")
+    substitute module("io.jguard:core") using project(":core")
   }
 }

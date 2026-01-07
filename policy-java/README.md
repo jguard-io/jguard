@@ -16,8 +16,8 @@ For static policies, the `.jguard` DSL may be more readable. Both produce identi
 ## Quick Start
 
 ```java
-import static org.jguard.policy.java.Capabilities.*;
-import static org.jguard.policy.java.Subjects.*;
+import static io.jguard.policy.java.Capabilities.*;
+import static io.jguard.policy.java.Subjects.*;
 
 PolicyDescriptor policy = JGuardPolicy.forModule("com.example.app")
     .grant(module(), fsRead("/data", "*.json"))
@@ -117,13 +117,13 @@ grant(pkg("com.example.app.jni"), nativeLoad());
 ### Complete Example
 
 ```java
-import static org.jguard.policy.java.Capabilities.*;
-import static org.jguard.policy.java.Subjects.*;
+import static io.jguard.policy.java.Capabilities.*;
+import static io.jguard.policy.java.Subjects.*;
 
-import org.jguard.policy.java.JGuardPolicy;
-import org.jguard.policy.model.PolicyDescriptor;
-import org.jguard.policy.serialization.BinaryPolicyWriter;
-import org.jguard.policy.serialization.JsonPolicyWriter;
+import io.jguard.policy.java.JGuardPolicy;
+import io.jguard.policy.model.PolicyDescriptor;
+import io.jguard.policy.serialization.BinaryPolicyWriter;
+import io.jguard.policy.serialization.JsonPolicyWriter;
 
 public class PolicyGenerator {
 
@@ -211,7 +211,7 @@ JGuardPolicy.forModule("com.example.app")
 
 ```groovy
 dependencies {
-    implementation("org.jguard:jguard-policy-java:0.1.0")
+    implementation("io.jguard:jguard-policy-java:0.1.0")
 }
 ```
 
