@@ -20,7 +20,7 @@ Instead, please report them using one of these methods:
 1. **GitHub Private Vulnerability Reporting** (Preferred)
 
    Use GitHub's private vulnerability reporting feature:
-   [Report a vulnerability](https://github.com/lucenia/jguard/security/advisories/new)
+   [Report a vulnerability](https://github.com/jguard-io/jguard/security/advisories/new)
 
 2. **Email**
 

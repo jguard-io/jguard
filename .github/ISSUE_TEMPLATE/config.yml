@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security Vulnerability
-    url: https://github.com/lucenia/jguard/security/advisories/new
+    url: https://github.com/jguard-io/jguard/security/advisories/new
     about: Report security vulnerabilities privately (do not use public issues)
   - name: Questions & Discussions
-    url: https://github.com/lucenia/jguard/discussions
+    url: https://github.com/jguard-io/jguard/discussions
     about: Ask questions or discuss ideas with the community

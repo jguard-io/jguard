@@ -7,12 +7,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lucenia/jguard/actions/workflows/ci.yml"><img src="https://github.com/lucenia/jguard/actions/workflows/ci.yml/badge.svg" alt="Build Status"></a>
-  <a href="https://github.com/lucenia/jguard/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/jguard-io/jguard/actions/workflows/ci.yml"><img src="https://github.com/jguard-io/jguard/actions/workflows/ci.yml/badge.svg" alt="Build Status"></a>
+  <a href="https://github.com/jguard-io/jguard/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://www.oracle.com/java/technologies/javase/jdk21-archive-downloads.html"><img src="https://img.shields.io/badge/Java-21%2B-orange.svg" alt="Java 21+"></a>
-  <a href="https://github.com/lucenia/jguard/issues"><img src="https://img.shields.io/github/issues/lucenia/jguard" alt="GitHub Issues"></a>
-  <a href="https://github.com/lucenia/jguard/pulls"><img src="https://img.shields.io/github/issues-pr/lucenia/jguard" alt="GitHub Pull Requests"></a>
-  <a href="https://github.com/lucenia/jguard/graphs/contributors"><img src="https://img.shields.io/github/contributors/lucenia/jguard" alt="Contributors"></a>
+  <a href="https://github.com/jguard-io/jguard/issues"><img src="https://img.shields.io/github/issues/jguard-io/jguard" alt="GitHub Issues"></a>
+  <a href="https://github.com/jguard-io/jguard/pulls"><img src="https://img.shields.io/github/issues-pr/jguard-io/jguard" alt="GitHub Pull Requests"></a>
+  <a href="https://github.com/jguard-io/jguard/graphs/contributors"><img src="https://img.shields.io/github/contributors/jguard-io/jguard" alt="Contributors"></a>
 </p>
 
 ---
