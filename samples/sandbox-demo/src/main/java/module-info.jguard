@@ -5,7 +5,7 @@
  * this file be licensed under the Apache-2.0 license or a
  * compatible open source license.
  */
-security module org.jguard.samples.sandbox {
+security module io.jguard.samples.sandbox {
 
     // Grant filesystem read access to the project's own source directory
     // Uses relative path (resolved from JVM working directory)
@@ -17,20 +17,20 @@ security module org.jguard.samples.sandbox {
 
     // Grant network outbound to specific packages
     // The .net package can connect to any host/port
-    entitle org.jguard.samples.sandbox.net to network.outbound;
+    entitle io.jguard.samples.sandbox.net to network.outbound;
 
     // The .net.restricted subpackage can ONLY connect to *.example.com on ports 80-443
     // This demonstrates host glob pattern + port range filtering
-    entitle org.jguard.samples.sandbox.net.restricted to network.outbound("*.example.com", "80-443");
+    entitle io.jguard.samples.sandbox.net.restricted to network.outbound("*.example.com", "80-443");
 
     // Grant network listen to specific packages
-    entitle org.jguard.samples.sandbox.net to network.listen;
+    entitle io.jguard.samples.sandbox.net to network.listen;
 
     // Grant thread creation to the worker package hierarchy
-    entitle org.jguard.samples.sandbox.worker.. to threads.create;
+    entitle io.jguard.samples.sandbox.worker.. to threads.create;
 
     // Grant native library loading to the nativelib package
-    entitle org.jguard.samples.sandbox.nativelib.. to native.load;
+    entitle io.jguard.samples.sandbox.nativelib.. to native.load;
 
     // Grant system property read access for the module
     // This is needed because:
@@ -42,10 +42,10 @@ security module org.jguard.samples.sandbox {
 
     // Grant environment variable read access to specific package
     // The .config package can read any env var
-    entitle org.jguard.samples.sandbox.config to env.read;
+    entitle io.jguard.samples.sandbox.config to env.read;
 
     // Grant system property write access to specific package
     // The .config package can write properties matching "app.**" (any depth)
-    entitle org.jguard.samples.sandbox.config to system.property.write("app.**");
+    entitle io.jguard.samples.sandbox.config to system.property.write("app.**");
 
 }

@@ -13,11 +13,11 @@ jGuard is a capability-based security framework for JDK 21+. It lets you declare
 ```groovy
 plugins {
     id "java"
-    id "org.jguard.policy" version "0.1.0"
+    id "io.jguard.policy" version "0.1.0"
 }
 
 dependencies {
-    implementation "org.jguard:core:0.1.0"
+    implementation "io.jguard:core:0.1.0"
 }
 ```
 
@@ -108,7 +108,7 @@ The demo includes a `RestrictedNetworkClient` that demonstrates host/port filter
 
 ```
 // Policy restricts this package to specific hosts and ports
-entitle org.jguard.samples.sandbox.net.restricted to network.outbound("*.example.com", "80-443");
+entitle io.jguard.samples.sandbox.net.restricted to network.outbound("*.example.com", "80-443");
 ```
 
 When running with the agent:

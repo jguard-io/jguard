@@ -103,7 +103,7 @@ security module com.example.myplugin {
 For build environments that require Java-only sources, jGuard optionally supports a Java-backed descriptor that compiles to the same policy model.
 
 ```java
-import static org.jguard.policy.Descriptor.*;
+import static io.jguard.policy.Descriptor.*;
 
 public final class security_policy {
   public static final Policy POLICY =
@@ -199,11 +199,11 @@ jGuard is designed for:
 plugins {
     id "java"
     id "application"
-    id "org.jguard.policy"
+    id "io.jguard.policy"
 }
 
 dependencies {
-    implementation("org.jguard:core")
+    implementation("io.jguard:core")
 }
 ```
 

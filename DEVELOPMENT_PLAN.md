@@ -146,8 +146,8 @@ System properties for runtime configuration:
 
 Prevent classpath conflicts:
 
-* Relocate ByteBuddy to `org.jguard.internal.bytebuddy` ✓
-* Relocate ASM to `org.jguard.internal.asm` ✓
+* Relocate ByteBuddy to `io.jguard.internal.bytebuddy` ✓
+* Relocate ASM to `io.jguard.internal.asm` ✓
 * Keep only public API unrelocated ✓
 * Test with apps using different ByteBuddy versions ✓
 

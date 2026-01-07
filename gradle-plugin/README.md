@@ -1,6 +1,6 @@
 # jGuard Gradle Plugin
 
-The `org.jguard.policy` Gradle plugin compiles jGuard policy descriptors and provides
+The `io.jguard.policy` Gradle plugin compiles jGuard policy descriptors and provides
 convenient tasks for running applications with agent enforcement.
 
 ## Installation
@@ -11,7 +11,7 @@ Add the plugin to your `build.gradle`:
 plugins {
     id "java"
     id "application"
-    id "org.jguard.policy"
+    id "io.jguard.policy"
 }
 ```
 
@@ -109,7 +109,7 @@ The plugin automatically locates the jGuard agent JAR using these methods (in or
 1. **Explicit dependency** - Add to the `jguardAgent` configuration:
    ```groovy
    dependencies {
-       jguardAgent("org.jguard:agent:1.0.0")
+       jguardAgent("io.jguard:agent:1.0.0")
    }
    ```
 
@@ -211,7 +211,7 @@ If you see "jGuard agent JAR not found", either:
 1. Add an explicit dependency:
    ```groovy
    dependencies {
-       jguardAgent("org.jguard:agent:VERSION")
+       jguardAgent("io.jguard:agent:VERSION")
    }
    ```
 
