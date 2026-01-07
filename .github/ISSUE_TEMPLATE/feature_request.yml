@@ -1,0 +1,70 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for jGuard
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please describe your idea below.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? Is it related to a specific use case?
+      placeholder: |
+        I'm trying to... but currently jGuard doesn't support...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like to see.
+      placeholder: |
+        I would like jGuard to support...
+    validations:
+      required: true
+
+  - type: textarea
+    id: policy-example
+    attributes:
+      label: Example Policy Syntax
+      description: If this involves new capabilities, show what the policy syntax might look like.
+      render: text
+      placeholder: |
+        security module com.example.myapp {
+            entitle module to new.capability("arg1", "arg2");
+        }
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe any alternative solutions or workarounds you've considered.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      description: What area of jGuard does this affect?
+      options:
+        - Policy language / syntax
+        - New capability
+        - Agent / enforcement
+        - Gradle plugin
+        - CLI tooling
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Would you be interested in contributing this feature?
+      options:
+        - label: I would be willing to submit a PR for this feature
