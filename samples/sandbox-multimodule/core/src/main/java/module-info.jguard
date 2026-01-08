@@ -1,0 +1,14 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * jGuard policy for the core module.
+ *
+ * This module can read configuration files from the "config" directory.
+ */
+security module io.jguard.samples.multimodule.core {
+  // Allow reading config files
+  entitle module to fs.read("config", "**");
+
+  // Allow reading from current directory (for demo purposes)
+  entitle module to fs.read(".", "*.txt");
+}

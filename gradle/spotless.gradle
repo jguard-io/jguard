@@ -56,6 +56,6 @@ spotless {
   groovyGradle {
     target "**/*.gradle"
     targetExclude "gradle/spotless.gradle" // Self-referential, already has header
-    licenseHeaderFile(licenseHeaderSlashSlash, "(plugins|import|buildscript|pluginManagement|dependencyResolutionManagement|dependencies|rootProject)")
+    licenseHeaderFile(licenseHeaderSlashSlash, "(plugins|import|buildscript|pluginManagement|dependencyResolutionManagement|dependencies|rootProject|subprojects|allprojects)")
   }
 }

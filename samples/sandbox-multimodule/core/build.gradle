@@ -1,0 +1,18 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+plugins {
+  id "io.jguard.policy"
+}
+
+dependencies {
+  implementation("io.jguard:core")
+}
+
+// The jGuard policy plugin will:
+// 1. Compile module-info.jguard to policy.bin
+// 2. Embed it in the JAR at META-INF/jguard/policy.bin

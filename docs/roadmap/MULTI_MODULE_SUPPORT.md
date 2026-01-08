@@ -173,9 +173,20 @@ Each module's policy only grants capabilities to code *within that module*. Modu
 
 ---
 
-### Milestone 2: Embedded Policy Discovery with Signature Verification
+### Milestone 2: Embedded Policy Discovery with Signature Verification ✅ COMPLETE
 
 **Goal:** Agent discovers policies from signed JARs on module path
+
+**Status:** Completed
+
+**Implemented:**
+- `JarSignatureVerifier` for verifying JAR signatures
+- `PolicyDiscovery` class to discover embedded policies from JARs
+- `AgentConfig` updated with `discoveryEnabled`, `allowUnsignedPolicies`, `unnamedModulePolicy`
+- `AgentInitializer` updated to use discovery when no explicit policy path provided
+- Duplicate module detection with fail-fast error
+- Development mode (`-Djguard.allowUnsignedPolicies=true`) for testing with unsigned JARs
+- Comprehensive tests in `PolicyDiscoveryTest`
 
 **Changes:**
 
@@ -233,14 +244,28 @@ Each module's policy only grants capabilities to code *within that module*. Modu
 
 5. **Gradle plugin updates**
    - Embed compiled `policy.bin` in JAR at `META-INF/jguard/policy.bin`
-   - New task: `embedJGuardPolicy` (runs after `compileJGuardPolicy`)
+   - New extension properties: `discoveryMode`, `allowUnsignedPolicies`
+   - `runWithAgent` task supports discovery mode for multi-module apps
+
+6. **PolicyEnforcer updates**
+   - Added `isSystemModule()` to allow JDK modules (java.*, jdk.*) through without policies
+   - Fixes issue where JDK class initialization was blocked
+
+7. **Multi-module sandbox demo** (`samples/sandbox-multimodule/`)
+   - Three modules: core (fs.read), network (network.outbound), app (minimal)
+   - Demonstrates module isolation and delegation patterns
+   - Includes JAR signing configuration for testing
+   - Test keystore at `signing/test-keystore.jks`
 
 **Files to modify/create:**
 - `agent/src/main/java/io/jguard/agent/PolicyDiscovery.java` (new)
 - `agent/src/main/java/io/jguard/agent/JarSignatureVerifier.java` (new)
 - `agent/src/main/java/io/jguard/agent/AgentInitializer.java`
-- `bootstrap/src/main/java/io/jguard/bootstrap/AgentConfig.java`
+- `agent/src/main/java/io/jguard/agent/PolicyEnforcer.java` (isSystemModule)
+- `agent-bootstrap/src/main/java/io/jguard/bootstrap/AgentConfig.java`
 - `gradle-plugin/src/main/java/io/jguard/gradle/policy/JGuardPolicyPlugin.java`
+- `gradle-plugin/src/main/java/io/jguard/gradle/policy/JGuardPolicyExtension.java`
+- `samples/sandbox-multimodule/` (new demo project)
 
 **Tests:**
 - Discovery finds policies in multiple signed JARs
@@ -248,7 +273,8 @@ Each module's policy only grants capabilities to code *within that module*. Modu
 - Discovery includes unsigned JARs (dev mode)
 - Discovery rejects tampered signed JARs
 - Duplicate module detection fails fast
-- Integration test with multi-module application
+- Integration test with multi-module application (sandbox-multimodule demo)
+- End-to-end signed JAR verification test
 
 ---
 
@@ -339,9 +365,9 @@ Each module's policy only grants capabilities to code *within that module*. Modu
 
 | Version | Milestones | Status | Delivers |
 |---------|------------|--------|----------|
-| **0.2.0** | 1 + 2 | Milestone 1 ✅ | Multi-module apps with embedded signed policies |
-| **0.3.0** | 3 | Planned | External policy overrides (hot-reloadable) |
-| **0.4.0** | 4 | Planned | CLI tools + full documentation |
+| **0.2.0** | 1 + 2 + 3 + 4 | 🚧 In Progress | Multi-module apps with signed policies, overrides, CLI |
+| ~~**0.3.0**~~ | ~~3~~ | ~~Planned~~ | ~~(Merged into 0.2.0)~~ |
+| ~~**0.4.0**~~ | ~~4~~ | ~~Planned~~ | ~~(Merged into 0.2.0)~~ |
 
 ## Migration from 0.1.x
 

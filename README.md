@@ -287,6 +287,59 @@ See [agent/README.md](agent/README.md) for full agent documentation and [gradle-
 
 ---
 
+## Multi-Module Support
+
+jGuard supports JPMS multi-module applications where each module has its own security policy.
+
+### How it works
+
+1. **Policy per module**: Each module has its own `module-info.jguard` next to `module-info.java`
+2. **Policies embedded in JARs**: Compiled policies are embedded at `META-INF/jguard/policy.bin`
+3. **Signed JAR verification**: By default, policies are only loaded from signed JARs
+4. **Module isolation**: Each module can only use its own entitlements (no cross-module access)
+
+### Configuration
+
+Enable multi-module discovery in your main application module:
+
+```groovy
+// app/build.gradle
+jguardPolicy {
+  discoveryMode = true
+  // allowUnsignedPolicies = true  // Only for development!
+}
+```
+
+### Example Structure
+
+```
+my-app/
+├── core/
+│   └── src/main/java/
+│       ├── module-info.java
+│       └── module-info.jguard    # fs.read entitlements
+├── network/
+│   └── src/main/java/
+│       ├── module-info.java
+│       └── module-info.jguard    # network.outbound entitlements
+└── app/
+    └── src/main/java/
+        ├── module-info.java
+        └── module-info.jguard    # minimal entitlements (delegates to core/network)
+```
+
+### Running
+
+```bash
+./gradlew :app:runWithAgent
+```
+
+The agent discovers all module policies from signed JARs on the classpath and enforces each module's entitlements independently.
+
+See [samples/sandbox-multimodule](samples/sandbox-multimodule) for a complete working example.
+
+---
+
 ## Status
 
 jGuard is ready for production use with comprehensive enforcement.
@@ -304,6 +357,7 @@ Completed:
 * Clear failure semantics with configurable modes (STRICT, PERMISSIVE, AUDIT)
 * Strong JPMS integration with module verification
 * Single dispatch architecture for efficient capability checking
+* **Multi-module support** with per-module policies and signed JAR verification
 
 ---
 

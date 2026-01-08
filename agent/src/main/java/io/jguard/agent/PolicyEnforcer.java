@@ -123,6 +123,12 @@ public final class PolicyEnforcer {
     String callerPackage = context.packageName();
     String callerModule = context.moduleName();
 
+    // JDK system modules are always allowed (they don't need policies)
+    if (isSystemModule(callerModule)) {
+      LOG.trace("Allowing system module: {}", callerModule);
+      return null;
+    }
+
     // Look up the policy for this module
     Optional<ModulePolicy> modulePolicy = getModulePolicy(callerModule);
     if (modulePolicy.isEmpty()) {
@@ -681,5 +687,31 @@ public final class PolicyEnforcer {
                 + "Known modules: %s",
             callerModule, callerPackage, details, getModuleNames());
     return new SecurityException(message);
+  }
+
+  /**
+   * Checks if a module name belongs to the JDK (system module).
+   *
+   * <p>System modules are trusted and don't require explicit policies. This includes:
+   *
+   * <ul>
+   *   <li>java.* - Core Java modules (java.base, java.net.http, etc.)
+   *   <li>jdk.* - JDK implementation modules
+   *   <li>javafx.* - JavaFX modules
+   *   <li>oracle.* - Oracle-specific modules (if present)
+   * </ul>
+   *
+   * @param moduleName the module name to check
+   * @return true if this is a JDK system module
+   */
+  private boolean isSystemModule(String moduleName) {
+    if (moduleName == null) {
+      return false;
+    }
+    return moduleName.startsWith("java.")
+        || moduleName.startsWith("jdk.")
+        || moduleName.startsWith("javafx.")
+        || moduleName.startsWith("oracle.")
+        || moduleName.equals("java.base");
   }
 }

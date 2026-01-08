@@ -30,6 +30,6 @@ spotless {
   // Gradle build files
   groovyGradle {
     target "**/*.gradle"
-    licenseHeaderFile(licenseHeaderSlashSlash, "(plugins|import|buildscript|pluginManagement|dependencyResolutionManagement|dependencies|rootProject)")
+    licenseHeaderFile(licenseHeaderSlashSlash, "(plugins|import|buildscript|pluginManagement|dependencyResolutionManagement|dependencies|rootProject|subprojects|allprojects)")
   }
 }

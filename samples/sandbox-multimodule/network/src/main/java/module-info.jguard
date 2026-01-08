@@ -1,0 +1,25 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * jGuard policy for the network module.
+ *
+ * This module can make outbound network connections to allowed hosts.
+ */
+security module io.jguard.samples.multimodule.network {
+  // Allow connecting to example.com on HTTPS
+  entitle module to network.outbound("*.example.com", 443);
+
+  // Allow connecting to httpbin.org for testing (HTTP and HTTPS)
+  entitle module to network.outbound("httpbin.org", "80-443");
+
+  // Allow localhost connections for testing
+  entitle module to network.outbound("localhost", "8080-8090");
+  entitle module to network.outbound("127.0.0.1", "8080-8090");
+
+  // System property read access for JDK class initialization
+  // JDK network classes read properties during initialization
+  entitle module to system.property.read;
+
+  // Thread creation for async network operations (HttpClient uses threads)
+  entitle module to threads.create;
+}

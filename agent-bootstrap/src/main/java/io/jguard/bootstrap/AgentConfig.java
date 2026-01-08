@@ -18,13 +18,16 @@ import java.nio.file.Path;
  * <h2>System Properties</h2>
  *
  * <ul>
- *   <li><b>jguard.policy</b> (required): Path to policy file
+ *   <li><b>jguard.policy</b>: Path to policy file (required unless discovery is enabled)
  *   <li><b>jguard.mode</b> (default: strict): Enforcement mode (strict/permissive/audit)
  *   <li><b>jguard.log.level</b> (default: info): Log level (error/warn/info/debug/trace)
  *   <li><b>jguard.log.denied</b> (default: true): Log denied operations
  *   <li><b>jguard.log.allowed</b> (default: false): Log allowed operations
  *   <li><b>jguard.reload</b> (default: false): Enable policy hot reload
  *   <li><b>jguard.reload.interval</b> (default: 5): Hot reload poll interval in seconds
+ *   <li><b>jguard.discovery</b> (default: true): Enable embedded policy discovery from JARs
+ *   <li><b>jguard.allowUnsignedPolicies</b> (default: false): Allow policies from unsigned JARs
+ *   <li><b>jguard.policy.unnamed</b>: Path to policy for unnamed module (classpath code)
  * </ul>
  *
  * <h2>Usage</h2>
@@ -45,6 +48,9 @@ public final class AgentConfig {
   private static final String PROP_LOG_ALLOWED = "jguard.log.allowed";
   private static final String PROP_RELOAD = "jguard.reload";
   private static final String PROP_RELOAD_INTERVAL = "jguard.reload.interval";
+  private static final String PROP_DISCOVERY = "jguard.discovery";
+  private static final String PROP_ALLOW_UNSIGNED = "jguard.allowUnsignedPolicies";
+  private static final String PROP_UNNAMED_POLICY = "jguard.policy.unnamed";
 
   private final Path policyPath;
   private final EnforcementMode mode;
@@ -53,6 +59,9 @@ public final class AgentConfig {
   private final boolean logAllowed;
   private final boolean hotReloadEnabled;
   private final long hotReloadIntervalSeconds;
+  private final boolean discoveryEnabled;
+  private final boolean allowUnsignedPolicies;
+  private final Path unnamedModulePolicy;
 
   private AgentConfig(Builder builder) {
     this.policyPath = builder.policyPath;
@@ -62,6 +71,9 @@ public final class AgentConfig {
     this.logAllowed = builder.logAllowed;
     this.hotReloadEnabled = builder.hotReloadEnabled;
     this.hotReloadIntervalSeconds = builder.hotReloadIntervalSeconds;
+    this.discoveryEnabled = builder.discoveryEnabled;
+    this.allowUnsignedPolicies = builder.allowUnsignedPolicies;
+    this.unnamedModulePolicy = builder.unnamedModulePolicy;
   }
 
   /**
@@ -74,19 +86,44 @@ public final class AgentConfig {
   public static AgentConfig fromSystemProperties(String agentArgs) {
     Builder builder = new Builder();
 
+    // Discovery mode: defaults to true (auto-discover from signed JARs)
+    String discoveryStr = System.getProperty(PROP_DISCOVERY);
+    boolean discovery = discoveryStr == null || Boolean.parseBoolean(discoveryStr);
+
     // Policy path: agent arg takes precedence over system property
     String policyStr = agentArgs;
     if (policyStr == null || policyStr.isBlank()) {
       policyStr = System.getProperty(PROP_POLICY);
     }
+
+    // Policy path is required only if discovery is disabled
     if (policyStr == null || policyStr.isBlank()) {
-      throw new IllegalArgumentException(
-          "No policy file specified. Use: -javaagent:jguard-agent.jar=policy.bin "
-              + "or -D"
-              + PROP_POLICY
-              + "=policy.bin");
+      if (!discovery) {
+        throw new IllegalArgumentException(
+            "No policy file specified and discovery is disabled. Use: "
+                + "-javaagent:jguard-agent.jar=policy.bin or -D"
+                + PROP_POLICY
+                + "=policy.bin");
+      }
+      // Discovery mode - no explicit policy path needed
+      builder.discoveryEnabled(true);
+    } else {
+      // Explicit policy path provided - use it, disable discovery
+      builder.policyPath(Path.of(policyStr));
+      builder.discoveryEnabled(false);
     }
-    builder.policyPath(Path.of(policyStr));
+
+    // Allow unsigned policies (development mode)
+    String allowUnsignedStr = System.getProperty(PROP_ALLOW_UNSIGNED);
+    if (allowUnsignedStr != null) {
+      builder.allowUnsignedPolicies(Boolean.parseBoolean(allowUnsignedStr));
+    }
+
+    // Unnamed module policy path
+    String unnamedPolicyStr = System.getProperty(PROP_UNNAMED_POLICY);
+    if (unnamedPolicyStr != null && !unnamedPolicyStr.isBlank()) {
+      builder.unnamedModulePolicy(Path.of(unnamedPolicyStr));
+    }
 
     // Enforcement mode
     String modeStr = System.getProperty(PROP_MODE);
@@ -198,6 +235,42 @@ public final class AgentConfig {
     return hotReloadIntervalSeconds;
   }
 
+  /**
+   * Returns true if embedded policy discovery from JARs is enabled.
+   *
+   * <p>When enabled, the agent scans the module path for signed JARs containing embedded policies
+   * at {@code META-INF/jguard/policy.bin}.
+   *
+   * @return true if discovery is enabled
+   */
+  public boolean discoveryEnabled() {
+    return discoveryEnabled;
+  }
+
+  /**
+   * Returns true if policies from unsigned JARs are allowed.
+   *
+   * <p>This should only be enabled for development/testing. In production, policies should only be
+   * loaded from signed JARs to prevent malicious code from granting itself capabilities.
+   *
+   * @return true if unsigned policies are allowed
+   */
+  public boolean allowUnsignedPolicies() {
+    return allowUnsignedPolicies;
+  }
+
+  /**
+   * Returns the path to the policy file for the unnamed module (classpath code).
+   *
+   * <p>When running with discovery enabled, classpath code (unnamed module) needs an explicit
+   * policy since it doesn't come from a signed JAR.
+   *
+   * @return the unnamed module policy path, or null if not specified
+   */
+  public Path unnamedModulePolicy() {
+    return unnamedModulePolicy;
+  }
+
   @Override
   public String toString() {
     return "AgentConfig{"
@@ -215,6 +288,12 @@ public final class AgentConfig {
         + hotReloadEnabled
         + ", hotReloadIntervalSeconds="
         + hotReloadIntervalSeconds
+        + ", discoveryEnabled="
+        + discoveryEnabled
+        + ", allowUnsignedPolicies="
+        + allowUnsignedPolicies
+        + ", unnamedModulePolicy="
+        + unnamedModulePolicy
         + '}';
   }
 
@@ -227,6 +306,9 @@ public final class AgentConfig {
     private boolean logAllowed = false;
     private boolean hotReloadEnabled = false;
     private long hotReloadIntervalSeconds = 5;
+    private boolean discoveryEnabled = false;
+    private boolean allowUnsignedPolicies = false;
+    private Path unnamedModulePolicy;
 
     /** Creates a new Builder with default values. */
     public Builder() {}
@@ -309,14 +391,47 @@ public final class AgentConfig {
     }
 
     /**
+     * Sets whether embedded policy discovery is enabled.
+     *
+     * @param value true to enable discovery from signed JARs
+     * @return this builder
+     */
+    public Builder discoveryEnabled(boolean value) {
+      this.discoveryEnabled = value;
+      return this;
+    }
+
+    /**
+     * Sets whether policies from unsigned JARs are allowed.
+     *
+     * @param value true to allow unsigned policies (development only)
+     * @return this builder
+     */
+    public Builder allowUnsignedPolicies(boolean value) {
+      this.allowUnsignedPolicies = value;
+      return this;
+    }
+
+    /**
+     * Sets the policy path for the unnamed module (classpath code).
+     *
+     * @param path the policy file path for unnamed module
+     * @return this builder
+     */
+    public Builder unnamedModulePolicy(Path path) {
+      this.unnamedModulePolicy = path;
+      return this;
+    }
+
+    /**
      * Builds the AgentConfig.
      *
      * @return the built configuration
-     * @throws IllegalStateException if policyPath is not set
+     * @throws IllegalStateException if policyPath is not set and discovery is disabled
      */
     public AgentConfig build() {
-      if (policyPath == null) {
-        throw new IllegalStateException("policyPath is required");
+      if (policyPath == null && !discoveryEnabled) {
+        throw new IllegalStateException("policyPath is required when discovery is disabled");
       }
       return new AgentConfig(this);
     }
