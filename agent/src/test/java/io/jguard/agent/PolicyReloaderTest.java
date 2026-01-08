@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -45,6 +46,11 @@ class PolicyReloaderTest {
     // Create initial policy
     PolicyDescriptor initialPolicy = createPolicy("com.example.app", "network.outbound");
     writePolicyFile(policyPath, initialPolicy);
+
+    // Backdate the file to ensure subsequent writes have a detectably newer mtime.
+    // Some filesystems have 1-second mtime granularity, causing flaky tests when
+    // files are written too quickly in succession.
+    Files.setLastModifiedTime(policyPath, FileTime.fromMillis(System.currentTimeMillis() - 2000));
 
     // Create config
     config = new AgentConfig.Builder().policyPath(policyPath).mode(EnforcementMode.STRICT).build();
