@@ -17,6 +17,7 @@ import static net.bytebuddy.matcher.ElementMatchers.takesNoArguments;
 import io.jguard.bootstrap.AgentConfig;
 import io.jguard.bootstrap.AgentLogger;
 import io.jguard.bootstrap.EnforcementMode;
+import io.jguard.policy.model.ApplicationPolicy;
 import io.jguard.policy.model.PolicyDescriptor;
 import io.jguard.policy.serialization.BinaryPolicyReader;
 import java.io.IOException;
@@ -71,8 +72,21 @@ public final class AgentInitializer {
 
     LOG.info("jGuard agent starting (mode={})", config.mode());
 
-    // Load policy
-    PolicyDescriptor policy = loadPolicy(config.policyPath());
+    // Load policy - either via discovery or from explicit path
+    ApplicationPolicy policy;
+    if (config.discoveryEnabled()) {
+      LOG.info("Policy discovery enabled - scanning for embedded policies");
+      try {
+        policy = PolicyDiscovery.discoverEmbedded(config);
+      } catch (PolicyDiscovery.PolicyDiscoveryException e) {
+        throw new RuntimeException("Policy discovery failed: " + e.getMessage(), e);
+      }
+    } else {
+      LOG.info("Loading policy from explicit path: {}", config.policyPath());
+      PolicyDescriptor descriptor = loadPolicy(config.policyPath());
+      policy = ApplicationPolicy.fromDescriptor(descriptor);
+    }
+
     PolicyEnforcer enforcer = new PolicyEnforcer(policy, config);
     enforcerRef.set(enforcer);
 
@@ -82,20 +96,25 @@ public final class AgentInitializer {
     // Install instrumentation
     installInstrumentation(inst);
 
-    // Start hot reload if enabled
+    // Start hot reload if enabled (only for explicit policy path mode)
     if (config.hotReloadEnabled()) {
-      reloader =
-          new PolicyReloader(
-              config.policyPath(), enforcerRef, config, config.hotReloadIntervalSeconds());
-      reloader.start();
+      if (config.discoveryEnabled()) {
+        LOG.warn("Hot reload is not supported in discovery mode - ignoring");
+      } else {
+        reloader =
+            new PolicyReloader(
+                config.policyPath(), enforcerRef, config, config.hotReloadIntervalSeconds());
+        reloader.start();
+      }
     }
 
     initialized = true;
     LOG.info(
-        "jGuard agent initialized successfully for module: {} (mode={}, hotReload={})",
-        policy.moduleName(),
+        "jGuard agent initialized successfully for {} module(s): {} (mode={}, hotReload={})",
+        policy.modules().size(),
+        enforcer.getModuleNames(),
         config.mode(),
-        config.hotReloadEnabled());
+        config.hotReloadEnabled() && !config.discoveryEnabled());
   }
 
   /**

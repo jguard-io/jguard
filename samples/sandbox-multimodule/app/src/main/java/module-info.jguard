@@ -1,0 +1,24 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * jGuard policy for the app module.
+ *
+ * This module has NO direct fs.read or network.outbound entitlements.
+ * It must delegate sensitive operations to the core and network modules.
+ *
+ * This demonstrates the principle of least privilege - the main application
+ * code doesn't need (and shouldn't have) direct access to files or network.
+ */
+security module io.jguard.samples.multimodule.app {
+  // Only thread creation for async operations
+  entitle module to threads.create;
+
+  // Environment variable access for configuration
+  entitle module to env.read("HOME");
+  entitle module to env.read("USER");
+
+  // System property read access for JDK class initialization
+  // JDK classes (like java.lang.ProcessEnvironment) read properties during
+  // initialization, which is triggered by calls like System.getenv().
+  entitle module to system.property.read;
+}

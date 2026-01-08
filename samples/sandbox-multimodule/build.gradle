@@ -1,0 +1,49 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+subprojects {
+  apply plugin: "java"
+
+  java {
+    toolchain {
+      languageVersion = JavaLanguageVersion.of(21)
+    }
+  }
+
+  repositories {
+    mavenCentral()
+  }
+
+  tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+  }
+
+  // Signing configuration for testing signed JAR policy discovery
+  def signingKeystore = rootProject.file("signing/test-keystore.jks")
+  def signingAlias = "jguard-test"
+  def signingStorepass = "jguardtest"
+  def signingKeypass = "jguardtest"
+
+  // Sign JAR after it's built (for testing signed JAR policy discovery)
+  tasks.named("jar") {
+    doLast {
+      def jarFile = archiveFile.get().asFile
+
+      if (signingKeystore.exists()) {
+        exec {
+          commandLine "jarsigner",
+            "-keystore", signingKeystore.absolutePath,
+            "-storepass", signingStorepass,
+            "-keypass", signingKeypass,
+            jarFile.absolutePath,
+            signingAlias
+        }
+        logger.lifecycle("Signed JAR: ${jarFile.name}")
+      }
+    }
+  }
+}

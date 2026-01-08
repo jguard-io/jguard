@@ -95,4 +95,25 @@ public abstract class JGuardPolicyExtension {
    * <p>Default: {@code info}
    */
   public abstract Property<String> getLogLevel();
+
+  /**
+   * Whether to use policy discovery mode for multi-module applications.
+   *
+   * <p>When enabled, the agent discovers and merges policies from all module JARs on the classpath
+   * instead of loading a single policy file. This is required for multi-module JPMS applications
+   * where each module has its own policy.
+   *
+   * <p>Default: {@code false}
+   */
+  public abstract Property<Boolean> getDiscoveryMode();
+
+  /**
+   * Whether to allow policies from unsigned JARs during discovery.
+   *
+   * <p>For development, set this to {@code true} since JARs are typically not signed during
+   * development. For production, leave as {@code false} to only load policies from signed JARs.
+   *
+   * <p>Default: {@code false}
+   */
+  public abstract Property<Boolean> getAllowUnsignedPolicies();
 }

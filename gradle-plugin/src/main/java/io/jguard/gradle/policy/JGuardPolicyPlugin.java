@@ -184,22 +184,36 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                               + "  }");
                     }
 
-                    // Get policy file
-                    File policyFile = compileTask.get().getOutputBin().get().getAsFile();
-                    if (!policyFile.exists()) {
-                      throw new IllegalStateException(
-                          "Policy file not found: "
-                              + policyFile
-                              + ". Run 'compileJGuardPolicy' first.");
-                    }
+                    // Check if discovery mode is enabled
+                    boolean discoveryMode =
+                        Boolean.TRUE.equals(extension.getDiscoveryMode().getOrNull());
 
                     // Build JVM args
                     List<String> jvmArgs = new ArrayList<>(task.getJvmArgs());
-                    jvmArgs.add(
-                        "-javaagent:"
-                            + agentJar.getAbsolutePath()
-                            + "="
-                            + policyFile.getAbsolutePath());
+
+                    if (discoveryMode) {
+                      // Discovery mode: no policy path, agent discovers from JARs
+                      jvmArgs.add("-javaagent:" + agentJar.getAbsolutePath());
+
+                      // Allow unsigned policies for development
+                      if (Boolean.TRUE.equals(extension.getAllowUnsignedPolicies().getOrNull())) {
+                        jvmArgs.add("-Djguard.allowUnsignedPolicies=true");
+                      }
+                    } else {
+                      // Single-module mode: pass explicit policy file
+                      File policyFile = compileTask.get().getOutputBin().get().getAsFile();
+                      if (!policyFile.exists()) {
+                        throw new IllegalStateException(
+                            "Policy file not found: "
+                                + policyFile
+                                + ". Run 'compileJGuardPolicy' first.");
+                      }
+                      jvmArgs.add(
+                          "-javaagent:"
+                              + agentJar.getAbsolutePath()
+                              + "="
+                              + policyFile.getAbsolutePath());
+                    }
 
                     // Add mode from property or extension
                     String mode =
@@ -218,7 +232,12 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
 
                     project.getLogger().lifecycle("Running with jGuard agent...");
                     project.getLogger().lifecycle("  Agent: " + agentJar);
-                    project.getLogger().lifecycle("  Policy: " + policyFile);
+                    if (discoveryMode) {
+                      project.getLogger().lifecycle("  Policy: discovery mode (multi-module)");
+                    } else {
+                      File policyFile = compileTask.get().getOutputBin().get().getAsFile();
+                      project.getLogger().lifecycle("  Policy: " + policyFile);
+                    }
                     if (mode != null) {
                       project.getLogger().lifecycle("  Mode: " + mode);
                     }
@@ -289,5 +308,7 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
     extension.getJarPath().convention("META-INF/jguard");
     extension.getMode().convention("strict");
     extension.getLogLevel().convention("info");
+    extension.getDiscoveryMode().convention(false);
+    extension.getAllowUnsignedPolicies().convention(false);
   }
 }

@@ -1,0 +1,37 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+plugins {
+  id "application"
+  id "io.jguard.policy"
+}
+
+application {
+  mainClass = "io.jguard.samples.multimodule.app.Main"
+  mainModule = "io.jguard.samples.multimodule.app"
+}
+
+dependencies {
+  implementation("io.jguard:core")
+  implementation(project(":core"))
+  implementation(project(":network"))
+}
+
+// Enable multi-module policy discovery with signed JARs
+jguardPolicy {
+  discoveryMode = true
+  // allowUnsignedPolicies defaults to false - requires signed JARs
+  // The JARs are signed by the root build.gradle configuration
+}
+
+// Make runWithAgent depend on agent build for composite builds
+tasks.named("runWithAgent") {
+  def jguardBuild = gradle.includedBuild("jguard")
+  dependsOn(jguardBuild.task(":agent:jar"))
+  // Ensure all module JARs are built with embedded policies
+  dependsOn(":core:jar", ":network:jar")
+}
