@@ -9,9 +9,11 @@ package io.jguard.agent;
 
 import io.jguard.bootstrap.AgentConfig;
 import io.jguard.bootstrap.AgentLogger;
+import io.jguard.policy.model.ApplicationPolicy;
 import io.jguard.policy.model.PolicyDescriptor;
 import io.jguard.policy.serialization.BinaryPolicyReader;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -26,6 +28,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p>This enables administrators to update entitlements without restarting the JVM. The reloader
  * polls the policy file at a configurable interval and atomically swaps the PolicyEnforcer when
  * changes are detected.
+ *
+ * <p>When an override directory is configured via {@code jguard.policy.override}, the reloader also
+ * watches for changes to override files and applies restrictive merging using {@link PolicyMerger}.
  *
  * <p>Usage:
  *
@@ -51,6 +56,7 @@ public final class PolicyReloader {
   private final ScheduledExecutorService scheduler;
 
   private volatile FileTime lastModifiedTime;
+  private volatile FileTime lastOverrideDirModifiedTime;
   private volatile boolean running;
 
   /**
@@ -97,6 +103,17 @@ public final class PolicyReloader {
       LOG.warn("Could not read initial policy file timestamp: {}", e.getMessage());
       this.lastModifiedTime = null;
     }
+
+    // Initialize override directory modification time if configured
+    Path overrideDir = config.overrideDir();
+    if (overrideDir != null && Files.isDirectory(overrideDir)) {
+      try {
+        this.lastOverrideDirModifiedTime = getOverrideDirModifiedTime(overrideDir);
+      } catch (IOException e) {
+        LOG.warn("Could not read initial override directory timestamp: {}", e.getMessage());
+        this.lastOverrideDirModifiedTime = null;
+      }
+    }
   }
 
   /**
@@ -115,8 +132,17 @@ public final class PolicyReloader {
     scheduler.scheduleAtFixedRate(
         this::checkAndReload, pollIntervalSeconds, pollIntervalSeconds, TimeUnit.SECONDS);
 
-    LOG.info(
-        "Policy hot reload enabled: watching {} (interval={}s)", policyPath, pollIntervalSeconds);
+    Path overrideDir = config.overrideDir();
+    if (overrideDir != null && Files.isDirectory(overrideDir)) {
+      LOG.info(
+          "Policy hot reload enabled: watching {} and override directory {} (interval={}s)",
+          policyPath,
+          overrideDir,
+          pollIntervalSeconds);
+    } else {
+      LOG.info(
+          "Policy hot reload enabled: watching {} (interval={}s)", policyPath, pollIntervalSeconds);
+    }
   }
 
   /** Stops the policy reloader. */
@@ -134,7 +160,7 @@ public final class PolicyReloader {
     LOG.info("Policy reloader stopped");
   }
 
-  /** Checks if the policy file has changed and reloads if necessary. */
+  /** Checks if the policy file or override directory has changed and reloads if necessary. */
   private void checkAndReload() {
     try {
       if (!Files.exists(policyPath)) {
@@ -142,13 +168,37 @@ public final class PolicyReloader {
         return;
       }
 
-      FileTime currentModifiedTime = Files.getLastModifiedTime(policyPath);
+      boolean policyChanged = false;
+      boolean overridesChanged = false;
 
-      // Check if file has been modified
+      // Check if policy file has been modified
+      FileTime currentModifiedTime = Files.getLastModifiedTime(policyPath);
       if (lastModifiedTime == null || currentModifiedTime.compareTo(lastModifiedTime) > 0) {
-        LOG.info("Policy file changed, reloading: {}", policyPath);
-        reload();
+        policyChanged = true;
         lastModifiedTime = currentModifiedTime;
+      }
+
+      // Check if override directory has changed
+      Path overrideDir = config.overrideDir();
+      if (overrideDir != null && Files.isDirectory(overrideDir)) {
+        FileTime currentOverrideModifiedTime = getOverrideDirModifiedTime(overrideDir);
+        if (lastOverrideDirModifiedTime == null
+            || currentOverrideModifiedTime.compareTo(lastOverrideDirModifiedTime) > 0) {
+          overridesChanged = true;
+          lastOverrideDirModifiedTime = currentOverrideModifiedTime;
+        }
+      }
+
+      // Reload if either changed
+      if (policyChanged || overridesChanged) {
+        if (policyChanged && overridesChanged) {
+          LOG.info("Policy and override files changed, reloading");
+        } else if (policyChanged) {
+          LOG.info("Policy file changed, reloading: {}", policyPath);
+        } else {
+          LOG.info("Override files changed, reloading from: {}", overrideDir);
+        }
+        reload();
       }
     } catch (Exception e) {
       LOG.error("Error checking policy file for changes: {}", e.getMessage());
@@ -159,25 +209,32 @@ public final class PolicyReloader {
   private void reload() {
     try {
       // Read new policy
-      PolicyDescriptor newPolicy = BinaryPolicyReader.fromFile(policyPath);
+      PolicyDescriptor descriptor = BinaryPolicyReader.fromFile(policyPath);
+      ApplicationPolicy policy = ApplicationPolicy.fromDescriptor(descriptor);
+
+      // Apply overrides if configured
+      Path overrideDir = config.overrideDir();
+      if (overrideDir != null && Files.isDirectory(overrideDir)) {
+        policy = PolicyMerger.merge(policy, overrideDir);
+      }
 
       // Create new enforcer
-      PolicyEnforcer newEnforcer = new PolicyEnforcer(newPolicy, config);
+      PolicyEnforcer newEnforcer = new PolicyEnforcer(policy, config);
 
       // Atomic swap
       PolicyEnforcer oldEnforcer = enforcerRef.getAndSet(newEnforcer);
 
       LOG.info(
-          "Policy reloaded successfully: module={}, entitlements={}",
-          newPolicy.moduleName(),
-          newPolicy.entitlements().size());
+          "Policy reloaded successfully: {} module(s), modules={}",
+          policy.modules().size(),
+          newEnforcer.getModuleNames());
 
-      // Log if module name changed (unusual but possible)
+      // Log if modules changed (unusual but possible)
       if (oldEnforcer != null) {
-        String oldModule = oldEnforcer.getModuleName();
-        String newModule = newPolicy.moduleName();
-        if (!oldModule.equals(newModule)) {
-          LOG.warn("Policy module name changed: {} -> {}", oldModule, newModule);
+        java.util.Set<String> oldModules = new java.util.HashSet<>(oldEnforcer.getModuleNames());
+        java.util.Set<String> newModules = new java.util.HashSet<>(newEnforcer.getModuleNames());
+        if (!oldModules.equals(newModules)) {
+          LOG.warn("Policy modules changed: {} -> {}", oldModules, newModules);
         }
       }
     } catch (IOException e) {
@@ -190,5 +247,27 @@ public final class PolicyReloader {
   /** Returns true if the reloader is currently running. */
   public boolean isRunning() {
     return running;
+  }
+
+  /**
+   * Gets the latest modification time of any .bin file in the override directory.
+   *
+   * @param overrideDir the override directory
+   * @return the latest modification time
+   * @throws IOException if reading directory fails
+   */
+  private FileTime getOverrideDirModifiedTime(Path overrideDir) throws IOException {
+    FileTime latest = Files.getLastModifiedTime(overrideDir);
+
+    try (DirectoryStream<Path> stream = Files.newDirectoryStream(overrideDir, "*.bin")) {
+      for (Path file : stream) {
+        FileTime fileTime = Files.getLastModifiedTime(file);
+        if (fileTime.compareTo(latest) > 0) {
+          latest = fileTime;
+        }
+      }
+    }
+
+    return latest;
   }
 }

@@ -278,9 +278,20 @@ Each module's policy only grants capabilities to code *within that module*. Modu
 
 ---
 
-### Milestone 3: External Policy Overrides
+### Milestone 3: External Policy Overrides ✅ COMPLETE
 
 **Goal:** Runtime policy restrictions via external files
+
+**Status:** Completed
+
+**Implemented:**
+- `PolicyMerger` class for merging embedded policies with external overrides
+- `AgentConfig.overrideDir()` for configuring override directory via `-Djguard.policy.override=...`
+- `AgentInitializer` integration to apply overrides during startup
+- `PolicyReloader` updated to watch override directory and hot-reload on changes
+- Restrictive merge semantics: overrides can only REMOVE capabilities
+- Validation helper to detect invalid overrides
+- Comprehensive tests in `PolicyMergerTest`
 
 **Changes:**
 
@@ -309,33 +320,51 @@ Each module's policy only grants capabilities to code *within that module*. Modu
    - Hot-reload on file changes
    - Atomic swap of merged policy
 
-**Files to modify/create:**
+**Files modified/created:**
 - `agent/src/main/java/io/jguard/agent/PolicyMerger.java` (new)
 - `agent/src/main/java/io/jguard/agent/PolicyReloader.java`
 - `agent/src/main/java/io/jguard/agent/AgentInitializer.java`
+- `agent-bootstrap/src/main/java/io/jguard/bootstrap/AgentConfig.java`
+- `agent/src/test/java/io/jguard/agent/PolicyMergerTest.java` (new)
 
 **Tests:**
-- Override restricts embedded capability
-- Override cannot grant new capabilities
-- Missing override file = full embedded policy
-- Global override applies to all modules
-- Hot-reload of overrides
+- Override restricts embedded capability ✅
+- Override cannot grant new capabilities ✅
+- Missing override file = full embedded policy ✅
+- Global override applies to all modules ✅
+- Module-specific override only affects that module ✅
+- Both module and global overrides are applied (intersection) ✅
+- Validation detects entitlements not in embedded ✅
 
 ---
 
-### Milestone 4: CLI and Documentation
+### Milestone 4: CLI Tools ✅ COMPLETE
 
-**Goal:** Tooling and docs for multi-module workflows
+**Goal:** CLI tooling for multi-module policy management
+
+**Status:** Completed
+
+**Implemented:**
+- `jguard` parent command with subcommands using picocli
+- `jguard compile` - Compile .jguard source to binary (refactored from JGuardc)
+- `jguard inspect` - Inspect embedded policy in JAR or policy file
+- `jguard list` - List policies found in JARs on a module path
+- `jguard diff` - Compare two policy files showing differences
+- `jguard validate-override` - Validate override is subset of embedded policy
+- Comprehensive test coverage for all commands (34 tests)
 
 **Changes:**
 
 1. **CLI commands**
    ```bash
+   # Compile policy source to binary
+   jguard compile -o policy.bin module-info.jguard
+
    # Inspect embedded policy in a JAR
    jguard inspect mymodule.jar
 
    # List all policies in an application
-   jguard list --module-path libs/
+   jguard list libs/
 
    # Diff two policies
    jguard diff embedded.bin override.bin
@@ -344,20 +373,37 @@ Each module's policy only grants capabilities to code *within that module*. Modu
    jguard validate-override --jar mymodule.jar --override override.bin
    ```
 
-2. **Documentation**
-   - Multi-module tutorial
-   - JAR signing guide for jGuard
-   - Override configuration guide
-   - Migration guide from v0.1
+**Files created:**
+- `cli/src/main/java/io/jguard/cli/JGuard.java` (parent command)
+- `cli/src/main/java/io/jguard/cli/CompileCommand.java` (refactored)
+- `cli/src/main/java/io/jguard/cli/InspectCommand.java`
+- `cli/src/main/java/io/jguard/cli/ListCommand.java`
+- `cli/src/main/java/io/jguard/cli/DiffCommand.java`
+- `cli/src/main/java/io/jguard/cli/ValidateOverrideCommand.java`
+- Test files for all commands
 
-**Files to modify/create:**
-- `cli/src/main/java/io/jguard/cli/InspectCommand.java` (new)
-- `cli/src/main/java/io/jguard/cli/ListCommand.java` (new)
-- `cli/src/main/java/io/jguard/cli/DiffCommand.java` (new)
-- `cli/src/main/java/io/jguard/cli/ValidateOverrideCommand.java` (new)
-- `docs/guides/multi-module.md` (new)
-- `docs/guides/jar-signing.md` (new)
-- `docs/guides/policy-overrides.md` (new)
+---
+
+### Milestone 5: Documentation Site (v0.3.0)
+
+**Goal:** User documentation via external documentation platform
+
+**Status:** Planned for v0.3.0
+
+**Rationale:** Documentation will be hosted externally (e.g., Docusaurus or ReadTheDocs) rather than in-repo markdown files to:
+- Keep the repository lightweight
+- Provide versioned documentation
+- Better UX with search, navigation, and cross-linking
+- Separate code concerns from user-facing docs
+
+**Planned content:**
+- Getting started guide
+- Multi-module tutorial
+- JAR signing guide for jGuard
+- Policy overrides configuration guide
+- Migration guide from v0.1
+- CLI reference
+- Policy language reference
 
 ---
 
@@ -365,9 +411,8 @@ Each module's policy only grants capabilities to code *within that module*. Modu
 
 | Version | Milestones | Status | Delivers |
 |---------|------------|--------|----------|
-| **0.2.0** | 1 + 2 + 3 + 4 | 🚧 In Progress | Multi-module apps with signed policies, overrides, CLI |
-| ~~**0.3.0**~~ | ~~3~~ | ~~Planned~~ | ~~(Merged into 0.2.0)~~ |
-| ~~**0.4.0**~~ | ~~4~~ | ~~Planned~~ | ~~(Merged into 0.2.0)~~ |
+| **0.2.0** | 1 + 2 + 3 + 4 | ✅ Complete | Multi-module apps with signed policies, overrides, CLI |
+| **0.3.0** | 5 | Planned | Documentation site (Docusaurus/ReadTheDocs) |
 
 ## Migration from 0.1.x
 

@@ -255,7 +255,7 @@ For production, use an external policy file so administrators can update entitle
 
 ```bash
 # Compile policy separately
-jguard compile module-info.jguard -o /etc/myapp/policy.bin
+jguard compile -o /etc/myapp/policy.bin module-info.jguard
 
 # Run with external policy
 java -javaagent:jguard-agent.jar=/etc/myapp/policy.bin \
@@ -279,7 +279,7 @@ When enabled, the agent polls the policy file for changes. Update the policy and
 
 ```bash
 # Update policy - no restart needed!
-jguard compile updated-policy.jguard -o /etc/myapp/policy.bin
+jguard compile -o /etc/myapp/policy.bin updated-policy.jguard
 # Changes detected and applied within 5 seconds
 ```
 
@@ -289,26 +289,14 @@ See [agent/README.md](agent/README.md) for full agent documentation and [gradle-
 
 ## Multi-Module Support
 
-jGuard supports JPMS multi-module applications where each module has its own security policy.
+jGuard supports JPMS multi-module applications where each module has its own security policy. **No configuration needed** — the agent automatically discovers policies from signed JARs.
 
 ### How it works
 
 1. **Policy per module**: Each module has its own `module-info.jguard` next to `module-info.java`
 2. **Policies embedded in JARs**: Compiled policies are embedded at `META-INF/jguard/policy.bin`
-3. **Signed JAR verification**: By default, policies are only loaded from signed JARs
+3. **Auto-discovery**: Agent automatically finds policies in signed JARs (no flags required)
 4. **Module isolation**: Each module can only use its own entitlements (no cross-module access)
-
-### Configuration
-
-Enable multi-module discovery in your main application module:
-
-```groovy
-// app/build.gradle
-jguardPolicy {
-  discoveryMode = true
-  // allowUnsignedPolicies = true  // Only for development!
-}
-```
 
 ### Example Structure
 
@@ -331,10 +319,25 @@ my-app/
 ### Running
 
 ```bash
+# Just attach the agent - policies are discovered automatically
 ./gradlew :app:runWithAgent
+
+# Or manually:
+java -javaagent:jguard-agent.jar -jar myapp.jar
 ```
 
-The agent discovers all module policies from signed JARs on the classpath and enforces each module's entitlements independently.
+The agent discovers all module policies from signed JARs and enforces each module's entitlements independently.
+
+### Development Mode
+
+For local development with unsigned JARs:
+
+```groovy
+// app/build.gradle
+jguardPolicy {
+  allowUnsignedPolicies = true  // Only for development!
+}
+```
 
 See [samples/sandbox-multimodule](samples/sandbox-multimodule) for a complete working example.
 

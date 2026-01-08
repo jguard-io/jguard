@@ -184,9 +184,9 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                               + "  }");
                     }
 
-                    // Check if discovery mode is enabled
+                    // Discovery mode is the default; only explicit false disables it
                     boolean discoveryMode =
-                        Boolean.TRUE.equals(extension.getDiscoveryMode().getOrNull());
+                        !Boolean.FALSE.equals(extension.getDiscoveryMode().getOrNull());
 
                     // Build JVM args
                     List<String> jvmArgs = new ArrayList<>(task.getJvmArgs());
@@ -308,7 +308,7 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
     extension.getJarPath().convention("META-INF/jguard");
     extension.getMode().convention("strict");
     extension.getLogLevel().convention("info");
-    extension.getDiscoveryMode().convention(false);
+    extension.getDiscoveryMode().convention(true); // Auto-discover policies by default
     extension.getAllowUnsignedPolicies().convention(false);
   }
 }

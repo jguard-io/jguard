@@ -146,20 +146,18 @@ You can enable unsigned policies for quick iteration:
 
 ```groovy
 jguardPolicy {
-  discoveryMode = true
   allowUnsignedPolicies = true  // NOT for production!
 }
 ```
 
 ## Gradle Configuration
 
-The main app module enables multi-module discovery:
+The jGuard agent **automatically discovers** policies from signed JARs — no configuration needed for production. For development with unsigned JARs:
 
 ```groovy
 // app/build.gradle
 jguardPolicy {
-  discoveryMode = true
-  // allowUnsignedPolicies defaults to false - requires signed JARs
+  allowUnsignedPolicies = true  // Only for development!
 }
 ```
 

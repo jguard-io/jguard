@@ -87,6 +87,12 @@ public final class AgentInitializer {
       policy = ApplicationPolicy.fromDescriptor(descriptor);
     }
 
+    // Apply policy overrides if configured
+    if (config.overrideDir() != null) {
+      LOG.info("Applying policy overrides from: {}", config.overrideDir());
+      policy = PolicyMerger.merge(policy, config.overrideDir());
+    }
+
     PolicyEnforcer enforcer = new PolicyEnforcer(policy, config);
     enforcerRef.set(enforcer);
 

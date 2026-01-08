@@ -144,6 +144,26 @@ You'll see output like:
   BLOCKED (expected): Port 8080 not in range 80-443
 ```
 
+## Development vs Production Mode
+
+jGuard automatically discovers policies from JARs on the classpath. By default, it only loads policies from **signed JARs** for security.
+
+### Development Mode (this sample)
+
+For development with unsigned JARs, enable unsigned policy loading:
+
+```groovy
+jguardPolicy {
+  allowUnsignedPolicies = true  // Only for development!
+}
+```
+
+This sample uses development mode so you can test without JAR signing.
+
+### Production Mode
+
+For production, sign your JARs and keep the default (`allowUnsignedPolicies = false`). See `samples/sandbox-multimodule` for an example with JAR signing.
+
 ## What Gets Built
 
 When you run `./gradlew build`, the plugin:

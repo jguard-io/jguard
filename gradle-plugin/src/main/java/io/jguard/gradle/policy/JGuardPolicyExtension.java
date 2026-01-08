@@ -97,13 +97,16 @@ public abstract class JGuardPolicyExtension {
   public abstract Property<String> getLogLevel();
 
   /**
-   * Whether to use policy discovery mode for multi-module applications.
+   * Whether to use policy discovery mode (automatic policy detection from JARs).
    *
-   * <p>When enabled, the agent discovers and merges policies from all module JARs on the classpath
-   * instead of loading a single policy file. This is required for multi-module JPMS applications
-   * where each module has its own policy.
+   * <p>When enabled (the default), the agent discovers policies from all module JARs on the
+   * classpath instead of loading a single policy file. This works for both single-module and
+   * multi-module JPMS applications.
    *
-   * <p>Default: {@code false}
+   * <p>Set to {@code false} to use explicit single-module mode where the compiled policy file is
+   * passed directly to the agent.
+   *
+   * <p>Default: {@code true}
    */
   public abstract Property<Boolean> getDiscoveryMode();
 
