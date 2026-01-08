@@ -21,12 +21,12 @@ dependencies {
   implementation(project(":network"))
 }
 
-// Enable multi-module policy discovery with signed JARs
-jguardPolicy {
-  discoveryMode = true
-  // allowUnsignedPolicies defaults to false - requires signed JARs
-  // The JARs are signed by the root build.gradle configuration
-}
+// jGuard auto-discovers policies from signed JARs - no config needed!
+// The JARs are signed by the root build.gradle configuration.
+// For development without signing, uncomment:
+// jguardPolicy {
+//   allowUnsignedPolicies = true
+// }
 
 // Make runWithAgent depend on agent build for composite builds
 tasks.named("runWithAgent") {

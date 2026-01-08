@@ -99,6 +99,14 @@ jguardPolicy {
 
     // Log level: error, warn, info, debug, trace (default: info)
     logLevel = "info"
+
+    // Discovery mode: auto-discover policies from JARs (default: true)
+    // Set to false for explicit single-module mode
+    discoveryMode = true
+
+    // Allow unsigned JARs during development (default: false)
+    // WARNING: Never enable in production!
+    allowUnsignedPolicies = false
 }
 ```
 
@@ -162,28 +170,37 @@ your-app.jar
 
 ## Production Deployment
 
-In production, run your application with standard JVM flags (no Gradle required):
+In production, run your application with the jGuard agent (no Gradle required).
+
+### Auto-Discovery (Recommended)
+
+The agent automatically discovers policies embedded in signed JARs:
+
+```bash
+# Just attach the agent - policies are discovered automatically!
+java -javaagent:/path/to/jguard-agent.jar \
+     -Djguard.mode=strict \
+     -jar your-app.jar
+```
+
+### Explicit Policy File
+
+For single-module apps or when you need an external policy file:
 
 ```bash
 java -javaagent:/path/to/jguard-agent.jar=/path/to/policy.bin \
      -Djguard.mode=strict \
-     -Djguard.log.level=warn \
      -jar your-app.jar
 ```
 
-The agent JAR path and policy file path are passed as a single argument to `-javaagent`,
-separated by `=`.
+### Policy Overrides
 
-### Extracting Policy from JAR
-
-If your policy is packaged in the JAR, extract it first or reference it directly:
+Operations teams can restrict policies at deployment time:
 
 ```bash
-# Extract policy
-unzip -p your-app.jar META-INF/jguard/policy.bin > policy.bin
-
-# Run with extracted policy
-java -javaagent:jguard-agent.jar=policy.bin -jar your-app.jar
+java -javaagent:jguard-agent.jar \
+     -Djguard.policy.override=/etc/myapp/overrides \
+     -jar your-app.jar
 ```
 
 ### JVM System Properties
@@ -192,6 +209,9 @@ java -javaagent:jguard-agent.jar=policy.bin -jar your-app.jar
 |----------|-------------|---------|
 | `jguard.mode` | Enforcement mode (strict, permissive, audit) | strict |
 | `jguard.log.level` | Logging level (error, warn, info, debug, trace) | info |
+| `jguard.discovery` | Auto-discover policies from signed JARs | true |
+| `jguard.allowUnsignedPolicies` | Allow unsigned JAR policies (dev only!) | false |
+| `jguard.policy.override` | Directory for policy override files | — |
 
 ## Example Project
 

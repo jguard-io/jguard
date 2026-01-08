@@ -77,10 +77,13 @@ security module com.example.myapp {
 |------------|-----------|-------------|
 | `fs.read(root, glob)` | 2 strings | Read files under `root` matching `glob` |
 | `fs.write(root, glob)` | 2 strings | Write files under `root` matching `glob` |
-| `network.outbound` | none | Make outbound network connections |
-| `network.listen(port?)` | 0-1 integer | Listen on a specific port (optional) |
+| `network.outbound(host?, port?)` | 0-2 args | Make outbound connections (optional host pattern and port/range) |
+| `network.listen(port?)` | 0-1 | Listen on a port (integer or string range like `"8080-8090"`) |
 | `threads.create` | none | Create new threads |
 | `native.load(pattern?)` | 0-1 string | Load native libraries (optional pattern) |
+| `env.read(pattern?)` | 0-1 string | Read environment variables (optional pattern) |
+| `system.property.read(pattern?)` | 0-1 string | Read system properties (optional pattern) |
+| `system.property.write(pattern?)` | 0-1 string | Write system properties (optional pattern) |
 
 ### Lexical Elements
 
@@ -232,7 +235,7 @@ PolicyDescriptor policy = PolicyDescriptor.create(
 ```
 Header:
   magic:         4 bytes ("JGRD")
-  version:       1 byte  (format version, currently 1)
+  version:       1 byte  (format version: 1=single-module, 2=multi-module)
 
 Module:
   moduleName:    string  (length-prefixed UTF-8)

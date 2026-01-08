@@ -46,9 +46,10 @@ Categories determine how capabilities match against policy. **Using an existing 
 
 | Category | Policy Args | Matching Logic | Examples |
 |----------|-------------|----------------|----------|
-| `SIMPLE` | None | Subject match only | `network.outbound`, `threads.create` |
-| `PORT` | Optional `(port)` | No args = any port, with arg = specific port | `network.listen` |
-| `TARGET_PATTERN` | Optional `(pattern)` | No args = any target, with arg = pattern match | `reflect.invoke`, `native.load` |
+| `SIMPLE` | None | Subject match only | `threads.create` |
+| `PORT` | Optional `(port)` or `("start-end")` | No args = any port, with arg = specific port or range | `network.listen` |
+| `HOST_PORT` | Optional `(hostPattern?, portSpec?)` | Host glob + port/range filtering | `network.outbound` |
+| `TARGET_PATTERN` | Optional `(pattern)` | No args = any target, with arg = pattern match | `native.load`, `env.read`, `system.property.*` |
 | `FILESYSTEM` | Required `(root, glob)` | Path must match root + glob | `fs.read`, `fs.write` |
 
 ## Adding a New Capability
@@ -67,7 +68,7 @@ For capabilities like `threads.create` that use the `SIMPLE` category:
 public enum Operation {
   FS_READ("fs.read", Category.FILESYSTEM),
   FS_WRITE("fs.write", Category.FILESYSTEM),
-  NET_CONNECT("network.outbound", Category.SIMPLE),
+  NET_CONNECT("network.outbound", Category.HOST_PORT),
   NET_LISTEN("network.listen", Category.PORT),
   THREAD_CREATE("threads.create", Category.SIMPLE);  // ← Add this line
   ...
@@ -134,6 +135,7 @@ public enum Category {
   FILESYSTEM,
   SIMPLE,
   PORT,
+  HOST_PORT,
   TARGET_PATTERN,
   MY_NEW_CATEGORY  // ← Add here
 }
@@ -149,6 +151,7 @@ private static String formatArgs(Operation op, Object arg0, int arg1) {
     case FILESYSTEM -> String.valueOf(arg0);
     case SIMPLE -> arg0 != null ? arg0 + ":" + arg1 : "n/a";
     case PORT -> "port=" + arg1;
+    case HOST_PORT -> arg0 + ":" + arg1;
     case TARGET_PATTERN -> arg0 != null ? String.valueOf(arg0) : "any";
     case MY_NEW_CATEGORY -> /* your format */;
   };
@@ -166,6 +169,7 @@ private boolean isAllowed(String callerPackage, Operation op, Object arg0, int a
     case FILESYSTEM -> isAllowedFilesystem(callerPackage, (Path) arg0, capability);
     case SIMPLE -> isAllowedSimple(callerPackage, capability);
     case PORT -> isAllowedPort(callerPackage, arg1, capability);
+    case HOST_PORT -> isAllowedHostPort(callerPackage, (String) arg0, arg1, capability);
     case TARGET_PATTERN -> isAllowedTargetPattern(callerPackage, (String) arg0, capability);
     case MY_NEW_CATEGORY -> isAllowedMyCategory(callerPackage, arg0, arg1, capability);
   };
@@ -220,6 +224,7 @@ Add a test case in `samples/sandbox-demo` that exercises the new capability with
 | FILESYSTEM | `Path` | `0` (unused) |
 | SIMPLE | `String` description (for logging) | `0` (unused) |
 | PORT | `null` | `int` port |
+| HOST_PORT | `String` host | `int` port |
 | TARGET_PATTERN | `String` target (class name, etc.) | `0` (unused) |
 
 ## Common Pitfalls

@@ -43,13 +43,13 @@ For production deployments, keep policy files external to the application JAR. T
 
 ```bash
 # 1. Compile policy separately
-jguard compile src/main/java/module-info.jguard -o /etc/myapp/policy.bin
+jguard compile -o /etc/myapp/policy.bin src/main/java/module-info.jguard
 
 # 2. Run application with external policy
 java -javaagent:jguard-agent.jar=/etc/myapp/policy.bin -jar myapp.jar
 
 # 3. Update entitlements (requires restart, no rebuild)
-jguard compile updated-policy.jguard -o /etc/myapp/policy.bin
+jguard compile -o /etc/myapp/policy.bin updated-policy.jguard
 systemctl restart myapp
 ```
 
@@ -62,13 +62,16 @@ This separation enables:
 
 | Property | Values | Default | Description |
 |----------|--------|---------|-------------|
-| `jguard.policy` | path | (required) | Policy file location |
+| `jguard.policy` | path | — | Explicit policy file (disables auto-discovery) |
 | `jguard.mode` | strict/permissive/audit | strict | Enforcement mode |
 | `jguard.log.level` | error/warn/info/debug/trace | info | Log verbosity |
 | `jguard.log.denied` | true/false | true | Log denied operations |
 | `jguard.log.allowed` | true/false | false | Log allowed operations |
 | `jguard.reload` | true/false | false | Enable policy hot reload |
 | `jguard.reload.interval` | seconds | 5 | Hot reload poll interval |
+| `jguard.discovery` | true/false | **true** | Auto-discover policies from signed JARs |
+| `jguard.allowUnsignedPolicies` | true/false | false | Allow unsigned JAR policies (dev only!) |
+| `jguard.policy.override` | path | — | Directory for policy override files |
 
 ### Enforcement Modes
 
@@ -304,6 +307,91 @@ When enabled, the agent polls the policy file for changes. When a change is dete
 4. Subsequent operations use new entitlements
 
 This enables zero-downtime policy updates in production environments.
+
+## Multi-Module Discovery
+
+For applications with multiple JPMS modules, jGuard **automatically discovers** policies embedded in signed JARs. No configuration needed:
+
+```bash
+# Just attach the agent - discovery is automatic!
+java -javaagent:jguard-agent.jar -jar myapp.jar
+```
+
+### How It Works
+
+1. Agent scans the classpath/module path for JARs containing `META-INF/jguard/policy.bin`
+2. Only signed JARs are accepted by default (prevents malicious policy injection)
+3. Each module's policy is indexed by module name
+4. Enforcement uses caller module identity from stack walking
+
+### Single-Module Mode
+
+To use an explicit policy file (disables auto-discovery):
+
+```bash
+java -javaagent:jguard-agent.jar=/path/to/policy.bin -jar myapp.jar
+```
+
+### Development Mode
+
+For local development with unsigned JARs:
+
+```bash
+java -javaagent:jguard-agent.jar \
+     -Djguard.allowUnsignedPolicies=true \
+     -jar myapp.jar
+```
+
+**Warning**: Never use `allowUnsignedPolicies=true` in production!
+
+### Module Isolation
+
+Each module can only use its own entitlements. Module A cannot use Module B's entitlements, even if they're in the same application.
+
+## Policy Overrides
+
+Operations teams can restrict embedded policies at deployment time using override files. Overrides can only **remove** capabilities—they cannot grant new ones.
+
+### Configuration
+
+```bash
+java -javaagent:jguard-agent.jar \
+     -Djguard.policy.override=/etc/myapp/overrides \
+     -jar myapp.jar
+```
+
+### Override Directory Structure
+
+```
+/etc/myapp/overrides/
+├── _global.bin           # Applies to ALL modules
+├── com.example.core.bin  # Overrides for com.example.core
+└── com.example.net.bin   # Overrides for com.example.net
+```
+
+### Merge Behavior
+
+Effective entitlements = embedded ∩ override (intersection)
+
+| Embedded | Override | Effective |
+|----------|----------|-----------|
+| fs.read, network.outbound | fs.read | fs.read only |
+| fs.read | fs.read, threads.create | fs.read only (new caps ignored) |
+| fs.read, network.outbound | (no override) | fs.read, network.outbound |
+
+### Hot Reload
+
+Override files are included in hot reload. Update an override file and changes take effect within the reload interval.
+
+### Validating Overrides
+
+Use the CLI to validate overrides before deployment:
+
+```bash
+jguard validate-override --jar mymodule.jar --override override.bin
+```
+
+This catches misconfigurations where an override attempts to grant capabilities not in the embedded policy.
 
 ## Production Deployment
 

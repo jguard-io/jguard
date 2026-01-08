@@ -50,6 +50,12 @@ tasks.withType(Test).configureEach {
   }
 }
 
+// Development mode: allow unsigned JARs for policy discovery
+// In production, JARs should be signed and this should be false (the default)
+jguardPolicy {
+  allowUnsignedPolicies = true
+}
+
 // The runWithAgent task is now provided by the io.jguard.policy plugin!
 // Usage:
 //   ./gradlew runWithAgent              - Run with agent enforcement

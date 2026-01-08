@@ -28,6 +28,7 @@ import java.nio.file.Path;
  *   <li><b>jguard.discovery</b> (default: true): Enable embedded policy discovery from JARs
  *   <li><b>jguard.allowUnsignedPolicies</b> (default: false): Allow policies from unsigned JARs
  *   <li><b>jguard.policy.unnamed</b>: Path to policy for unnamed module (classpath code)
+ *   <li><b>jguard.policy.override</b>: Path to override directory (can only restrict, not expand)
  * </ul>
  *
  * <h2>Usage</h2>
@@ -51,6 +52,7 @@ public final class AgentConfig {
   private static final String PROP_DISCOVERY = "jguard.discovery";
   private static final String PROP_ALLOW_UNSIGNED = "jguard.allowUnsignedPolicies";
   private static final String PROP_UNNAMED_POLICY = "jguard.policy.unnamed";
+  private static final String PROP_OVERRIDE_DIR = "jguard.policy.override";
 
   private final Path policyPath;
   private final EnforcementMode mode;
@@ -62,6 +64,7 @@ public final class AgentConfig {
   private final boolean discoveryEnabled;
   private final boolean allowUnsignedPolicies;
   private final Path unnamedModulePolicy;
+  private final Path overrideDir;
 
   private AgentConfig(Builder builder) {
     this.policyPath = builder.policyPath;
@@ -74,6 +77,7 @@ public final class AgentConfig {
     this.discoveryEnabled = builder.discoveryEnabled;
     this.allowUnsignedPolicies = builder.allowUnsignedPolicies;
     this.unnamedModulePolicy = builder.unnamedModulePolicy;
+    this.overrideDir = builder.overrideDir;
   }
 
   /**
@@ -123,6 +127,12 @@ public final class AgentConfig {
     String unnamedPolicyStr = System.getProperty(PROP_UNNAMED_POLICY);
     if (unnamedPolicyStr != null && !unnamedPolicyStr.isBlank()) {
       builder.unnamedModulePolicy(Path.of(unnamedPolicyStr));
+    }
+
+    // Policy override directory
+    String overrideDirStr = System.getProperty(PROP_OVERRIDE_DIR);
+    if (overrideDirStr != null && !overrideDirStr.isBlank()) {
+      builder.overrideDir(Path.of(overrideDirStr));
     }
 
     // Enforcement mode
@@ -271,6 +281,28 @@ public final class AgentConfig {
     return unnamedModulePolicy;
   }
 
+  /**
+   * Returns the path to the policy override directory.
+   *
+   * <p>When set, the agent loads override files from this directory and merges them with embedded
+   * policies. Override semantics are restrictive-only: overrides can only REMOVE capabilities from
+   * the embedded policy, never add.
+   *
+   * <p>Expected directory structure:
+   *
+   * <pre>
+   * /etc/myapp/overrides/
+   * ├── com.example.core.bin       # Override for com.example.core module
+   * ├── com.example.transport.bin  # Override for com.example.transport module
+   * └── _global.bin                # Global override (applies to ALL modules)
+   * </pre>
+   *
+   * @return the override directory path, or null if not specified
+   */
+  public Path overrideDir() {
+    return overrideDir;
+  }
+
   @Override
   public String toString() {
     return "AgentConfig{"
@@ -294,6 +326,8 @@ public final class AgentConfig {
         + allowUnsignedPolicies
         + ", unnamedModulePolicy="
         + unnamedModulePolicy
+        + ", overrideDir="
+        + overrideDir
         + '}';
   }
 
@@ -309,6 +343,7 @@ public final class AgentConfig {
     private boolean discoveryEnabled = false;
     private boolean allowUnsignedPolicies = false;
     private Path unnamedModulePolicy;
+    private Path overrideDir;
 
     /** Creates a new Builder with default values. */
     public Builder() {}
@@ -420,6 +455,20 @@ public final class AgentConfig {
      */
     public Builder unnamedModulePolicy(Path path) {
       this.unnamedModulePolicy = path;
+      return this;
+    }
+
+    /**
+     * Sets the policy override directory.
+     *
+     * <p>Files in this directory can restrict (but not expand) embedded policies. See {@link
+     * AgentConfig#overrideDir()} for expected directory structure.
+     *
+     * @param path the override directory path
+     * @return this builder
+     */
+    public Builder overrideDir(Path path) {
+      this.overrideDir = path;
       return this;
     }
 

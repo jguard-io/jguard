@@ -70,10 +70,22 @@ Factory methods for defining what actions are permitted.
 |--------|---------------|-------------|
 | `fsRead(root, glob)` | `fs.read("/path", "*.ext")` | Read files matching glob under root |
 | `fsWrite(root, glob)` | `fs.write("/path", "*.ext")` | Write files matching glob under root |
-| `networkOutbound()` | `network.outbound` | Make outbound network connections |
+| `networkOutbound()` | `network.outbound` | Make outbound network connections (any host/port) |
+| `networkOutbound(host)` | `network.outbound("*.example.com")` | Outbound to matching hosts (any port) |
+| `networkOutbound(host, port)` | `network.outbound("*.example.com", 443)` | Outbound to host pattern and port |
+| `networkOutbound(host, portRange)` | `network.outbound("*", "80-443")` | Outbound with port range |
+| `networkListen()` | `network.listen` | Listen on any port |
 | `networkListen(port)` | `network.listen(8080)` | Listen on a specific port |
+| `networkListen(portRange)` | `network.listen("8080-8090")` | Listen on a port range |
 | `threadsCreate()` | `threads.create` | Create new threads |
-| `nativeLoad()` | `native.load` | Load native libraries |
+| `nativeLoad()` | `native.load` | Load any native library |
+| `nativeLoad(pattern)` | `native.load("mylib")` | Load specific native library |
+| `envRead()` | `env.read` | Read any environment variable |
+| `envRead(pattern)` | `env.read("HOME")` | Read specific environment variable |
+| `propertyRead()` | `system.property.read` | Read any system property |
+| `propertyRead(pattern)` | `system.property.read("app.**")` | Read matching system properties |
+| `propertyWrite()` | `system.property.write` | Write any system property |
+| `propertyWrite(pattern)` | `system.property.write("app.**")` | Write matching system properties |
 
 ## Examples
 
