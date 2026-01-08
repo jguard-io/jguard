@@ -7,9 +7,11 @@
  */
 package io.jguard.policy.serialization;
 
+import io.jguard.policy.model.ApplicationPolicy;
 import io.jguard.policy.model.CapabilityArgument;
 import io.jguard.policy.model.CapabilityGrant;
 import io.jguard.policy.model.Entitlement;
+import io.jguard.policy.model.ModulePolicy;
 import io.jguard.policy.model.PolicyDescriptor;
 import io.jguard.policy.model.SubjectPattern;
 import java.io.ByteArrayOutputStream;
@@ -54,7 +56,8 @@ import java.nio.charset.StandardCharsets;
 public final class BinaryPolicyWriter {
 
   private static final byte[] MAGIC = {'J', 'G', 'R', 'D'};
-  private static final byte FORMAT_VERSION = 1;
+  private static final byte FORMAT_VERSION_V1 = 1;
+  private static final byte FORMAT_VERSION_V2 = 2;
 
   private static final byte SUBJECT_MODULE = 0;
   private static final byte SUBJECT_EXACT = 1;
@@ -68,8 +71,91 @@ public final class BinaryPolicyWriter {
     // Static utility class
   }
 
+  // ========== V2 Format (Multi-Module) ==========
+
   /**
-   * Writes a policy descriptor to a byte array.
+   * Writes an application policy to a byte array using v2 format.
+   *
+   * @param policy the application policy to write
+   * @return the serialized bytes
+   * @throws IOException if an I/O error occurs
+   */
+  public static byte[] toBytes(ApplicationPolicy policy) throws IOException {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    write(policy, baos);
+    return baos.toByteArray();
+  }
+
+  /**
+   * Writes an application policy to an output stream using v2 format.
+   *
+   * <p>V2 format supports multiple modules:
+   *
+   * <pre>
+   * Header:
+   *   magic:         4 bytes ("JGRD")
+   *   version:       1 byte  (2)
+   *
+   * Modules:
+   *   count:         2 bytes (unsigned short)
+   *   modules:       repeated module
+   *
+   * Module:
+   *   moduleName:    string  (length-prefixed UTF-8)
+   *   entitlements:  count (2 bytes) + repeated entitlement
+   * </pre>
+   *
+   * @param policy the application policy to write
+   * @param out the output stream to write to
+   * @throws IOException if an I/O error occurs
+   */
+  public static void write(ApplicationPolicy policy, OutputStream out) throws IOException {
+    DataOutputStream dos = new DataOutputStream(out);
+
+    // Header
+    dos.write(MAGIC);
+    dos.writeByte(FORMAT_VERSION_V2);
+
+    // Module count
+    if (policy.modules().size() > 65535) {
+      throw new IOException("Too many modules: " + policy.modules().size());
+    }
+    dos.writeShort(policy.modules().size());
+
+    // Each module
+    for (ModulePolicy module : policy.modules()) {
+      writeModule(dos, module);
+    }
+
+    dos.flush();
+  }
+
+  private static void writeModule(DataOutputStream dos, ModulePolicy module) throws IOException {
+    // Module name
+    writeString(dos, module.moduleName());
+
+    // Entitlements
+    if (module.entitlements().size() > 65535) {
+      throw new IOException(
+          "Too many entitlements in module "
+              + module.moduleName()
+              + ": "
+              + module.entitlements().size());
+    }
+    dos.writeShort(module.entitlements().size());
+
+    for (Entitlement entitlement : module.entitlements()) {
+      writeEntitlement(dos, entitlement);
+    }
+  }
+
+  // ========== V1 Format (Single-Module, Legacy) ==========
+
+  /**
+   * Writes a policy descriptor to a byte array using v1 format.
+   *
+   * <p>This method is maintained for backward compatibility. New code should use {@link
+   * #toBytes(ApplicationPolicy)} instead.
    *
    * @param policy the policy descriptor to write
    * @return the serialized bytes
@@ -82,7 +168,10 @@ public final class BinaryPolicyWriter {
   }
 
   /**
-   * Writes a policy descriptor to an output stream.
+   * Writes a policy descriptor to an output stream using v1 format.
+   *
+   * <p>This method is maintained for backward compatibility. New code should use {@link
+   * #write(ApplicationPolicy, OutputStream)} instead.
    *
    * @param policy the policy descriptor to write
    * @param out the output stream to write to
@@ -93,7 +182,7 @@ public final class BinaryPolicyWriter {
 
     // Header
     dos.write(MAGIC);
-    dos.writeByte(FORMAT_VERSION);
+    dos.writeByte(FORMAT_VERSION_V1);
 
     // Module name
     writeString(dos, policy.moduleName());
@@ -110,6 +199,8 @@ public final class BinaryPolicyWriter {
 
     dos.flush();
   }
+
+  // ========== Common Helpers ==========
 
   private static void writeEntitlement(DataOutputStream dos, Entitlement entitlement)
       throws IOException {

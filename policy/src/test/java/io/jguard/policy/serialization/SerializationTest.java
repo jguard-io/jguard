@@ -11,9 +11,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.jguard.policy.model.ApplicationPolicy;
 import io.jguard.policy.model.CapabilityArgument;
 import io.jguard.policy.model.CapabilityGrant;
 import io.jguard.policy.model.Entitlement;
+import io.jguard.policy.model.ModulePolicy;
 import io.jguard.policy.model.PolicyDescriptor;
 import io.jguard.policy.model.SubjectPattern;
 import java.io.ByteArrayOutputStream;
@@ -723,10 +725,11 @@ class SerializationTest {
     void rejectsUnsupportedVersion() {
       byte[] invalid = {'J', 'G', 'R', 'D', 99, 0, 3, 'a', 'p', 'p', 0, 0};
 
+      // PolicyDescriptor.fromBytes() only supports v1
       org.assertj.core.api.Assertions.assertThatThrownBy(
               () -> BinaryPolicyReader.fromBytes(invalid))
           .isInstanceOf(IOException.class)
-          .hasMessageContaining("Unsupported policy format version");
+          .hasMessageContaining("v1 format");
     }
   }
 
@@ -763,6 +766,190 @@ class SerializationTest {
       JsonNode root = JSON_MAPPER.readTree(json);
       assertThat(root.get("moduleName").asText()).isEqualTo("com.example.app");
       assertThat(root.get("entitlements").size()).isEqualTo(3);
+    }
+  }
+
+  @Nested
+  class MultiModuleSerializationTest {
+
+    @Test
+    void writesV2FormatHeader() throws IOException {
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of());
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(policy);
+
+      // Magic bytes
+      assertThat(bytes[0]).isEqualTo((byte) 'J');
+      assertThat(bytes[1]).isEqualTo((byte) 'G');
+      assertThat(bytes[2]).isEqualTo((byte) 'R');
+      assertThat(bytes[3]).isEqualTo((byte) 'D');
+      // Version 2
+      assertThat(bytes[4]).isEqualTo((byte) 2);
+    }
+
+    @Test
+    void writesModuleCount() throws IOException {
+      ModulePolicy module1 = new ModulePolicy("com.example.core", List.of());
+      ModulePolicy module2 = new ModulePolicy("com.example.web", List.of());
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(module1, module2));
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(policy);
+
+      // Module count at bytes 5-6 (big-endian short)
+      int moduleCount = ((bytes[5] & 0xFF) << 8) | (bytes[6] & 0xFF);
+      assertThat(moduleCount).isEqualTo(2);
+    }
+
+    @Test
+    void roundTripMultipleModules() throws IOException {
+      Entitlement coreEntitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("fs.read", List.of()));
+      Entitlement webEntitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("network.listen", List.of()));
+      Entitlement transportEntitlement =
+          new Entitlement(
+              SubjectPattern.module(), CapabilityGrant.of("network.outbound", List.of()));
+
+      ModulePolicy core = new ModulePolicy("com.example.core", List.of(coreEntitlement));
+      ModulePolicy web = new ModulePolicy("com.example.web", List.of(webEntitlement));
+      ModulePolicy transport =
+          new ModulePolicy("com.example.transport", List.of(transportEntitlement));
+
+      ApplicationPolicy original = ApplicationPolicy.create(List.of(core, web, transport));
+
+      // Write and read back
+      byte[] bytes = BinaryPolicyWriter.toBytes(original);
+      ApplicationPolicy restored = BinaryPolicyReader.applicationPolicyFromBytes(bytes);
+
+      // Verify structure
+      assertThat(restored.formatVersion()).isEqualTo(2);
+      assertThat(restored.modules()).hasSize(3);
+
+      // Modules are sorted by name
+      assertThat(restored.modules().get(0).moduleName()).isEqualTo("com.example.core");
+      assertThat(restored.modules().get(1).moduleName()).isEqualTo("com.example.transport");
+      assertThat(restored.modules().get(2).moduleName()).isEqualTo("com.example.web");
+
+      // Verify entitlements preserved
+      assertThat(restored.getModule("com.example.core")).isPresent();
+      assertThat(restored.getModule("com.example.core").get().entitlements()).hasSize(1);
+      assertThat(
+              restored
+                  .getModule("com.example.core")
+                  .get()
+                  .entitlements()
+                  .get(0)
+                  .capability()
+                  .name())
+          .isEqualTo("fs.read");
+    }
+
+    @Test
+    void readsV1AsApplicationPolicy() throws IOException {
+      // Create a v1 policy
+      PolicyDescriptor v1Policy =
+          PolicyDescriptor.create(
+              "com.legacy.app",
+              List.of(
+                  new Entitlement(
+                      SubjectPattern.module(), CapabilityGrant.of("network.outbound"))));
+
+      byte[] v1Bytes = BinaryPolicyWriter.toBytes(v1Policy);
+
+      // Read as ApplicationPolicy
+      ApplicationPolicy restored = BinaryPolicyReader.applicationPolicyFromBytes(v1Bytes);
+
+      // Should be wrapped in single-module ApplicationPolicy
+      assertThat(restored.modules()).hasSize(1);
+      assertThat(restored.modules().get(0).moduleName()).isEqualTo("com.legacy.app");
+      assertThat(restored.modules().get(0).entitlements()).hasSize(1);
+    }
+
+    @Test
+    void preservesEntitlementsWithArguments() throws IOException {
+      Entitlement fsRead =
+          new Entitlement(
+              SubjectPattern.recursive("com.example.io"),
+              CapabilityGrant.of(
+                  "fs.read",
+                  List.of(
+                      new CapabilityArgument.StringArg("/data"),
+                      new CapabilityArgument.StringArg("**/*.json"))));
+
+      Entitlement listen =
+          new Entitlement(
+              SubjectPattern.exactPackage("com.example.server"),
+              CapabilityGrant.of(
+                  "network.listen", List.of(new CapabilityArgument.IntegerArg(8080))));
+
+      ModulePolicy module = new ModulePolicy("com.example.app", List.of(fsRead, listen));
+      ApplicationPolicy original = ApplicationPolicy.create(List.of(module));
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(original);
+      ApplicationPolicy restored = BinaryPolicyReader.applicationPolicyFromBytes(bytes);
+
+      ModulePolicy restoredModule = restored.getModule("com.example.app").orElseThrow();
+      assertThat(restoredModule.entitlements()).hasSize(2);
+
+      // Find fs.read entitlement
+      Entitlement restoredFsRead =
+          restoredModule.entitlements().stream()
+              .filter(e -> e.capability().name().equals("fs.read"))
+              .findFirst()
+              .orElseThrow();
+
+      assertThat(restoredFsRead.subject().type()).isEqualTo(SubjectPattern.Type.PACKAGE_RECURSIVE);
+      assertThat(restoredFsRead.subject().packageName()).isEqualTo("com.example.io");
+      assertThat(restoredFsRead.capability().arguments()).hasSize(2);
+      assertThat(
+              ((CapabilityArgument.StringArg) restoredFsRead.capability().arguments().get(0))
+                  .value())
+          .isEqualTo("/data");
+    }
+
+    @Test
+    void handlesEmptyModuleList() throws IOException {
+      ApplicationPolicy original = ApplicationPolicy.create(List.of());
+
+      byte[] bytes = BinaryPolicyWriter.toBytes(original);
+      ApplicationPolicy restored = BinaryPolicyReader.applicationPolicyFromBytes(bytes);
+
+      assertThat(restored.modules()).isEmpty();
+    }
+
+    @Test
+    void getModuleReturnsEmptyForUnknownModule() throws IOException {
+      ModulePolicy module = new ModulePolicy("com.example.app", List.of());
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(module));
+
+      assertThat(policy.getModule("com.unknown.module")).isEmpty();
+    }
+
+    @Test
+    void hasModuleReturnsTrueForKnownModule() {
+      ModulePolicy module = new ModulePolicy("com.example.app", List.of());
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(module));
+
+      assertThat(policy.hasModule("com.example.app")).isTrue();
+      assertThat(policy.hasModule("com.unknown.module")).isFalse();
+    }
+
+    @Test
+    void totalEntitlementCountSumsAcrossModules() {
+      ModulePolicy module1 =
+          new ModulePolicy(
+              "mod1",
+              List.of(
+                  new Entitlement(SubjectPattern.module(), CapabilityGrant.of("cap1")),
+                  new Entitlement(SubjectPattern.module(), CapabilityGrant.of("cap2"))));
+      ModulePolicy module2 =
+          new ModulePolicy(
+              "mod2",
+              List.of(new Entitlement(SubjectPattern.module(), CapabilityGrant.of("cap3"))));
+
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(module1, module2));
+
+      assertThat(policy.totalEntitlementCount()).isEqualTo(3);
     }
   }
 }

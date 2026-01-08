@@ -7,9 +7,11 @@
  */
 package io.jguard.policy.serialization;
 
+import io.jguard.policy.model.ApplicationPolicy;
 import io.jguard.policy.model.CapabilityArgument;
 import io.jguard.policy.model.CapabilityGrant;
 import io.jguard.policy.model.Entitlement;
+import io.jguard.policy.model.ModulePolicy;
 import io.jguard.policy.model.PolicyDescriptor;
 import io.jguard.policy.model.SubjectPattern;
 import java.io.ByteArrayInputStream;
@@ -30,7 +32,8 @@ import java.util.List;
 public final class BinaryPolicyReader {
 
   private static final byte[] MAGIC = {'J', 'G', 'R', 'D'};
-  private static final byte FORMAT_VERSION = 1;
+  private static final byte FORMAT_VERSION_V1 = 1;
+  private static final byte FORMAT_VERSION_V2 = 2;
 
   private static final byte SUBJECT_MODULE = 0;
   private static final byte SUBJECT_EXACT = 1;
@@ -44,8 +47,105 @@ public final class BinaryPolicyReader {
     // Static utility class
   }
 
+  // ========== ApplicationPolicy (V1 or V2) ==========
+
+  /**
+   * Reads an application policy from a file path.
+   *
+   * <p>Supports both v1 (single-module) and v2 (multi-module) formats. V1 files are automatically
+   * wrapped into an ApplicationPolicy with a single module.
+   *
+   * @param path the path to the policy file
+   * @return the deserialized application policy
+   * @throws IOException if an I/O error occurs
+   */
+  public static ApplicationPolicy applicationPolicyFromFile(Path path) throws IOException {
+    return applicationPolicyFromBytes(Files.readAllBytes(path));
+  }
+
+  /**
+   * Reads an application policy from a byte array.
+   *
+   * <p>Supports both v1 (single-module) and v2 (multi-module) formats.
+   *
+   * @param bytes the serialized policy bytes
+   * @return the deserialized application policy
+   * @throws IOException if an I/O error occurs
+   */
+  public static ApplicationPolicy applicationPolicyFromBytes(byte[] bytes) throws IOException {
+    return readApplicationPolicy(new ByteArrayInputStream(bytes));
+  }
+
+  /**
+   * Reads an application policy from an input stream.
+   *
+   * <p>Supports both v1 (single-module) and v2 (multi-module) formats. V1 files are automatically
+   * wrapped into an ApplicationPolicy with a single module.
+   *
+   * @param in the input stream to read from
+   * @return the deserialized application policy
+   * @throws IOException if an I/O error occurs
+   */
+  public static ApplicationPolicy readApplicationPolicy(InputStream in) throws IOException {
+    DataInputStream dis = new DataInputStream(in);
+
+    // Read and validate magic bytes
+    byte[] magic = new byte[4];
+    dis.readFully(magic);
+    validateMagic(magic);
+
+    // Read version and dispatch to appropriate reader
+    byte version = dis.readByte();
+    return switch (version) {
+      case FORMAT_VERSION_V1 -> readV1AsApplicationPolicy(dis);
+      case FORMAT_VERSION_V2 -> readV2ApplicationPolicy(dis);
+      default -> throw new IOException("Unsupported policy format version: " + version);
+    };
+  }
+
+  private static ApplicationPolicy readV1AsApplicationPolicy(DataInputStream dis)
+      throws IOException {
+    // V1 format: single module
+    String moduleName = readString(dis);
+    List<Entitlement> entitlements = readEntitlements(dis);
+    ModulePolicy module = new ModulePolicy(moduleName, entitlements);
+    return ApplicationPolicy.single(module);
+  }
+
+  private static ApplicationPolicy readV2ApplicationPolicy(DataInputStream dis) throws IOException {
+    // V2 format: multiple modules
+    int moduleCount = dis.readUnsignedShort();
+    List<ModulePolicy> modules = new ArrayList<>(moduleCount);
+
+    for (int i = 0; i < moduleCount; i++) {
+      modules.add(readModule(dis));
+    }
+
+    return new ApplicationPolicy(ApplicationPolicy.FORMAT_VERSION, modules);
+  }
+
+  private static ModulePolicy readModule(DataInputStream dis) throws IOException {
+    String moduleName = readString(dis);
+    List<Entitlement> entitlements = readEntitlements(dis);
+    return new ModulePolicy(moduleName, entitlements);
+  }
+
+  private static List<Entitlement> readEntitlements(DataInputStream dis) throws IOException {
+    int entitlementCount = dis.readUnsignedShort();
+    List<Entitlement> entitlements = new ArrayList<>(entitlementCount);
+    for (int i = 0; i < entitlementCount; i++) {
+      entitlements.add(readEntitlement(dis));
+    }
+    return entitlements;
+  }
+
+  // ========== PolicyDescriptor (V1 Legacy) ==========
+
   /**
    * Reads a policy descriptor from a file path.
+   *
+   * <p>This method only supports v1 format. For v2 support, use {@link
+   * #applicationPolicyFromFile(Path)}.
    *
    * @param path the path to the policy file
    * @return the deserialized policy descriptor
@@ -58,6 +158,9 @@ public final class BinaryPolicyReader {
   /**
    * Reads a policy descriptor from a byte array.
    *
+   * <p>This method only supports v1 format. For v2 support, use {@link
+   * #applicationPolicyFromBytes(byte[])}.
+   *
    * @param bytes the serialized policy bytes
    * @return the deserialized policy descriptor
    * @throws IOException if an I/O error occurs
@@ -69,6 +172,9 @@ public final class BinaryPolicyReader {
   /**
    * Reads a policy descriptor from an input stream.
    *
+   * <p>This method only supports v1 format. For v2 support, use {@link
+   * #readApplicationPolicy(InputStream)}.
+   *
    * @param in the input stream to read from
    * @return the deserialized policy descriptor
    * @throws IOException if an I/O error occurs
@@ -79,6 +185,29 @@ public final class BinaryPolicyReader {
     // Read and validate magic bytes
     byte[] magic = new byte[4];
     dis.readFully(magic);
+    validateMagic(magic);
+
+    // Read and validate version (v1 only for PolicyDescriptor)
+    byte version = dis.readByte();
+    if (version != FORMAT_VERSION_V1) {
+      throw new IOException(
+          "PolicyDescriptor only supports v1 format. Use readApplicationPolicy() for v2. "
+              + "Got version: "
+              + version);
+    }
+
+    // Read module name
+    String moduleName = readString(dis);
+
+    // Read entitlements
+    List<Entitlement> entitlements = readEntitlements(dis);
+
+    return new PolicyDescriptor(FORMAT_VERSION_V1, moduleName, entitlements);
+  }
+
+  // ========== Common Helpers ==========
+
+  private static void validateMagic(byte[] magic) throws IOException {
     if (magic[0] != MAGIC[0]
         || magic[1] != MAGIC[1]
         || magic[2] != MAGIC[2]
@@ -87,25 +216,6 @@ public final class BinaryPolicyReader {
           "Invalid policy file: expected JGRD magic bytes, got "
               + new String(magic, StandardCharsets.US_ASCII));
     }
-
-    // Read and validate version
-    byte version = dis.readByte();
-    if (version != FORMAT_VERSION) {
-      throw new IOException("Unsupported policy format version: " + version);
-    }
-
-    // Read module name
-    String moduleName = readString(dis);
-
-    // Read entitlements
-    int entitlementCount = dis.readUnsignedShort();
-    List<Entitlement> entitlements = new ArrayList<>(entitlementCount);
-
-    for (int i = 0; i < entitlementCount; i++) {
-      entitlements.add(readEntitlement(dis));
-    }
-
-    return new PolicyDescriptor(FORMAT_VERSION, moduleName, entitlements);
   }
 
   private static Entitlement readEntitlement(DataInputStream dis) throws IOException {

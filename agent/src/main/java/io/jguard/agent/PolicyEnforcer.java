@@ -11,8 +11,10 @@ import io.jguard.bootstrap.AgentConfig;
 import io.jguard.bootstrap.AgentLogger;
 import io.jguard.bootstrap.CallerContext;
 import io.jguard.bootstrap.Operation;
+import io.jguard.policy.model.ApplicationPolicy;
 import io.jguard.policy.model.CapabilityArgument;
 import io.jguard.policy.model.Entitlement;
+import io.jguard.policy.model.ModulePolicy;
 import io.jguard.policy.model.PolicyDescriptor;
 import io.jguard.policy.model.SubjectPattern;
 import java.nio.file.FileSystems;
@@ -20,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -34,28 +37,67 @@ public final class PolicyEnforcer {
 
   private static final AgentLogger LOG = AgentLogger.getLogger(PolicyEnforcer.class);
 
-  private final PolicyDescriptor policy;
-  private final String moduleName;
+  private final ApplicationPolicy policy;
   private final AgentConfig config;
 
-  // Cache: "package:capability:args" -> allowed
+  // Cache: "module:package:capability:args" -> allowed
   private final Map<String, Boolean> decisionCache = new ConcurrentHashMap<>();
 
-  PolicyEnforcer(PolicyDescriptor policy, AgentConfig config) {
+  /**
+   * Creates a PolicyEnforcer for a multi-module application policy.
+   *
+   * @param policy the application policy containing all module policies
+   * @param config the agent configuration
+   */
+  PolicyEnforcer(ApplicationPolicy policy, AgentConfig config) {
     this.policy = policy;
-    this.moduleName = policy.moduleName();
     this.config = config;
     indexEntitlements();
-    LOG.info("PolicyEnforcer initialized for module: {}", moduleName);
+    LOG.info(
+        "PolicyEnforcer initialized for {} module(s): {}",
+        policy.modules().size(),
+        policy.modules().stream().map(ModulePolicy::moduleName).toList());
+  }
+
+  /**
+   * Creates a PolicyEnforcer from a legacy single-module PolicyDescriptor.
+   *
+   * @param descriptor the legacy policy descriptor
+   * @param config the agent configuration
+   */
+  PolicyEnforcer(PolicyDescriptor descriptor, AgentConfig config) {
+    this(ApplicationPolicy.fromDescriptor(descriptor), config);
   }
 
   /**
    * Returns the module name this enforcer is configured for.
    *
-   * @return the module name
+   * <p>For multi-module policies, returns the first module name (for backward compatibility).
+   * Prefer using {@link #getModuleNames()} for multi-module policies.
+   *
+   * @return the first module name, or "none" if no modules
    */
   public String getModuleName() {
-    return moduleName;
+    return policy.modules().isEmpty() ? "none" : policy.modules().get(0).moduleName();
+  }
+
+  /**
+   * Returns all module names this enforcer has policies for.
+   *
+   * @return list of module names
+   */
+  public List<String> getModuleNames() {
+    return policy.modules().stream().map(ModulePolicy::moduleName).toList();
+  }
+
+  /**
+   * Checks if this enforcer has a policy for the given module.
+   *
+   * @param moduleName the module name to check
+   * @return true if a policy exists for the module
+   */
+  public boolean hasModule(String moduleName) {
+    return policy.hasModule(moduleName);
   }
 
   // ========== SINGLE DISPATCH ENTRY POINT ==========
@@ -66,7 +108,7 @@ public final class PolicyEnforcer {
    * <p>This is the single entry point for all capability checks. It handles:
    *
    * <ul>
-   *   <li>Module identity verification
+   *   <li>Module identity verification (caller must have a policy)
    *   <li>Decision caching for performance
    *   <li>Dispatch to operation-specific entitlement checking
    * </ul>
@@ -81,11 +123,15 @@ public final class PolicyEnforcer {
     String callerPackage = context.packageName();
     String callerModule = context.moduleName();
 
-    // First, verify module identity
-    if (!isValidModule(callerModule)) {
-      LOG.debug("Module mismatch: caller module={}, expected module={}", callerModule, moduleName);
-      return deniedModuleMismatch(callerPackage, callerModule, formatDetails(op, arg0, arg1));
+    // Look up the policy for this module
+    Optional<ModulePolicy> modulePolicy = getModulePolicy(callerModule);
+    if (modulePolicy.isEmpty()) {
+      LOG.debug("No policy for module: {}", callerModule);
+      return deniedNoPolicy(callerPackage, callerModule, formatDetails(op, arg0, arg1));
     }
+
+    List<Entitlement> entitlements = modulePolicy.get().entitlements();
+    String moduleName = modulePolicy.get().moduleName();
 
     // Build cache key (may be null for high-cardinality operations like HOST_PORT)
     String cacheKey = buildCacheKey(callerPackage, callerModule, op, arg0, arg1);
@@ -100,8 +146,8 @@ public final class PolicyEnforcer {
       }
     }
 
-    // Check entitlements
-    boolean allowed = isAllowed(callerPackage, op, arg0, arg1);
+    // Check entitlements for this module
+    boolean allowed = isAllowed(callerPackage, moduleName, entitlements, op, arg0, arg1);
 
     // Cache result if key is available
     if (cacheKey != null) {
@@ -111,6 +157,46 @@ public final class PolicyEnforcer {
     return allowed
         ? null
         : denied(callerPackage, op.capabilityName(), formatDetails(op, arg0, arg1));
+  }
+
+  /**
+   * Gets the module policy for a caller's module.
+   *
+   * <p>Handles special cases:
+   *
+   * <ul>
+   *   <li>Named JPMS modules: exact match by module name
+   *   <li>Unnamed module (classpath): For backward compatibility with single-module apps, unnamed
+   *       callers use the single policy if there's only one module. For multi-module apps, unnamed
+   *       callers need an explicit "unnamed" policy.
+   * </ul>
+   */
+  private Optional<ModulePolicy> getModulePolicy(String callerModule) {
+    // First try exact match
+    Optional<ModulePolicy> exact = policy.getModule(callerModule);
+    if (exact.isPresent()) {
+      return exact;
+    }
+
+    // For unnamed modules (classpath code)
+    if ("unnamed".equals(callerModule)) {
+      // Check for explicit "unnamed" policy first
+      Optional<ModulePolicy> unnamed = policy.getModule(ApplicationPolicy.UNNAMED_MODULE);
+      if (unnamed.isPresent()) {
+        return unnamed;
+      }
+
+      // Backward compatibility: if there's only one module policy, use it for unnamed callers.
+      // This supports existing single-module apps where tests run on classpath.
+      if (policy.modules().size() == 1) {
+        LOG.debug(
+            "Allowing unnamed module to use single-module policy: {}",
+            policy.modules().get(0).moduleName());
+        return Optional.of(policy.modules().get(0));
+      }
+    }
+
+    return Optional.empty();
   }
 
   // ========== CATEGORY-BASED DISPATCH ==========
@@ -157,45 +243,35 @@ public final class PolicyEnforcer {
    *
    * <p>Uses operation category - adding new operations with existing categories requires no
    * changes.
+   *
+   * @param callerPackage the calling package name
+   * @param moduleName the module name (for subject matching)
+   * @param entitlements the entitlements for this module
+   * @param op the operation being checked
+   * @param arg0 primary argument
+   * @param arg1 secondary argument
+   * @return true if allowed
    */
-  private boolean isAllowed(String callerPackage, Operation op, Object arg0, int arg1) {
+  private boolean isAllowed(
+      String callerPackage,
+      String moduleName,
+      List<Entitlement> entitlements,
+      Operation op,
+      Object arg0,
+      int arg1) {
     String capability = op.capabilityName();
     return switch (op.category()) {
-      case FILESYSTEM -> isAllowedFilesystem(callerPackage, (Path) arg0, capability);
-      case SIMPLE -> isAllowedSimple(callerPackage, capability);
-      case PORT -> isAllowedPort(callerPackage, arg1, capability);
-      case TARGET_PATTERN -> isAllowedTargetPattern(callerPackage, (String) arg0, capability);
-      case HOST_PORT -> isAllowedHostPort(callerPackage, (String) arg0, arg1, capability);
+      case FILESYSTEM ->
+          isAllowedFilesystem(callerPackage, moduleName, entitlements, (Path) arg0, capability);
+      case SIMPLE -> isAllowedSimple(callerPackage, moduleName, entitlements, capability);
+      case PORT -> isAllowedPort(callerPackage, moduleName, entitlements, arg1, capability);
+      case TARGET_PATTERN ->
+          isAllowedTargetPattern(
+              callerPackage, moduleName, entitlements, (String) arg0, capability);
+      case HOST_PORT ->
+          isAllowedHostPort(
+              callerPackage, moduleName, entitlements, (String) arg0, arg1, capability);
     };
-  }
-
-  /**
-   * Validates that the caller's module is allowed by the policy.
-   *
-   * <p>The policy is compiled for a specific module. We allow:
-   *
-   * <ul>
-   *   <li>Exact module match
-   *   <li>Unnamed modules (classpath) - these are common for tests and simple apps
-   * </ul>
-   */
-  private boolean isValidModule(String callerModule) {
-    // Exact match with policy module
-    if (callerModule.equals(moduleName)) {
-      return true;
-    }
-
-    // Allow unnamed modules (classpath code) - the package-level check will still apply
-    // This is necessary for:
-    // - Tests running without module-path
-    // - Simple applications not using JPMS
-    // - Libraries loaded via classpath
-    if ("unnamed".equals(callerModule)) {
-      LOG.debug("Allowing unnamed module - package-level check will apply");
-      return true;
-    }
-
-    return false;
   }
 
   // ========== CATEGORY HANDLERS ==========
@@ -205,12 +281,13 @@ public final class PolicyEnforcer {
    *
    * <p>Used for: network.outbound, threads.create, etc.
    */
-  private boolean isAllowedSimple(String callerPackage, String capability) {
-    for (Entitlement entitlement : policy.entitlements()) {
+  private boolean isAllowedSimple(
+      String callerPackage, String moduleName, List<Entitlement> entitlements, String capability) {
+    for (Entitlement entitlement : entitlements) {
       if (!entitlement.capability().name().equals(capability)) {
         continue;
       }
-      if (!subjectMatches(entitlement.subject(), callerPackage)) {
+      if (!subjectMatches(entitlement.subject(), callerPackage, moduleName)) {
         continue;
       }
 
@@ -230,12 +307,17 @@ public final class PolicyEnforcer {
    *
    * <p>Port 0 (ephemeral) is only allowed if the entitlement explicitly includes it.
    */
-  private boolean isAllowedPort(String callerPackage, int port, String capability) {
-    for (Entitlement entitlement : policy.entitlements()) {
+  private boolean isAllowedPort(
+      String callerPackage,
+      String moduleName,
+      List<Entitlement> entitlements,
+      int port,
+      String capability) {
+    for (Entitlement entitlement : entitlements) {
       if (!entitlement.capability().name().equals(capability)) {
         continue;
       }
-      if (!subjectMatches(entitlement.subject(), callerPackage)) {
+      if (!subjectMatches(entitlement.subject(), callerPackage, moduleName)) {
         continue;
       }
 
@@ -277,18 +359,23 @@ public final class PolicyEnforcer {
    * <p>Port 0 is not a valid destination for outbound connections and is always denied.
    */
   private boolean isAllowedHostPort(
-      String callerPackage, String host, int port, String capability) {
+      String callerPackage,
+      String moduleName,
+      List<Entitlement> entitlements,
+      String host,
+      int port,
+      String capability) {
     // Port 0 is not a valid destination for outbound connections
     if (port == 0) {
       LOG.debug("{} denied: port 0 is invalid destination", capability);
       return false;
     }
 
-    for (Entitlement entitlement : policy.entitlements()) {
+    for (Entitlement entitlement : entitlements) {
       if (!entitlement.capability().name().equals(capability)) {
         continue;
       }
-      if (!subjectMatches(entitlement.subject(), callerPackage)) {
+      if (!subjectMatches(entitlement.subject(), callerPackage, moduleName)) {
         continue;
       }
 
@@ -369,14 +456,19 @@ public final class PolicyEnforcer {
    *
    * <p>Specific pattern entitlements like {@code env.read("HOME")} do NOT grant bulk access.
    */
-  private boolean isAllowedTargetPattern(String callerPackage, String target, String capability) {
+  private boolean isAllowedTargetPattern(
+      String callerPackage,
+      String moduleName,
+      List<Entitlement> entitlements,
+      String target,
+      String capability) {
     boolean isBulkAccess = (target == null);
 
-    for (Entitlement entitlement : policy.entitlements()) {
+    for (Entitlement entitlement : entitlements) {
       if (!entitlement.capability().name().equals(capability)) {
         continue;
       }
-      if (!subjectMatches(entitlement.subject(), callerPackage)) {
+      if (!subjectMatches(entitlement.subject(), callerPackage, moduleName)) {
         continue;
       }
 
@@ -472,15 +564,20 @@ public final class PolicyEnforcer {
    *
    * <p>Used for: fs.read, fs.write
    */
-  private boolean isAllowedFilesystem(String callerPackage, Path path, String capability) {
+  private boolean isAllowedFilesystem(
+      String callerPackage,
+      String moduleName,
+      List<Entitlement> entitlements,
+      Path path,
+      String capability) {
     Path absPath = path.toAbsolutePath().normalize();
 
     // Check all entitlements that apply to this caller
-    for (Entitlement entitlement : policy.entitlements()) {
+    for (Entitlement entitlement : entitlements) {
       if (!entitlement.capability().name().equals(capability)) {
         continue;
       }
-      if (!subjectMatches(entitlement.subject(), callerPackage)) {
+      if (!subjectMatches(entitlement.subject(), callerPackage, moduleName)) {
         continue;
       }
 
@@ -506,11 +603,14 @@ public final class PolicyEnforcer {
     return false;
   }
 
-  private boolean subjectMatches(SubjectPattern subject, String callerPackage) {
+  private boolean subjectMatches(SubjectPattern subject, String callerPackage, String moduleName) {
     return switch (subject.type()) {
       case MODULE ->
-          // Module-wide grant: matches any package in this module
-          callerPackage.startsWith(moduleName);
+          // Module-wide grant: matches any package in this module.
+          // For unnamed modules (classpath), allow any package since classpath code
+          // can come from arbitrary packages.
+          ApplicationPolicy.UNNAMED_MODULE.equals(moduleName)
+              || callerPackage.startsWith(moduleName);
       case PACKAGE_EXACT ->
           // Exact package match
           callerPackage.equals(subject.packageName());
@@ -557,8 +657,11 @@ public final class PolicyEnforcer {
   }
 
   private void indexEntitlements() {
-    for (Entitlement entitlement : policy.entitlements()) {
-      LOG.debug("Indexed entitlement: {}", entitlement);
+    for (ModulePolicy module : policy.modules()) {
+      LOG.debug("Module: {}", module.moduleName());
+      for (Entitlement entitlement : module.entitlements()) {
+        LOG.debug("  Entitlement: {}", entitlement);
+      }
     }
   }
 
@@ -570,13 +673,13 @@ public final class PolicyEnforcer {
     return new SecurityException(message);
   }
 
-  private SecurityException deniedModuleMismatch(
+  private SecurityException deniedNoPolicy(
       String callerPackage, String callerModule, String details) {
     String message =
         String.format(
-            "jGuard: access denied - module '%s' does not match policy module '%s' "
-                + "(package='%s', path=%s)",
-            callerModule, moduleName, callerPackage, details);
+            "jGuard: access denied - no policy for module '%s' (package='%s', operation=%s). "
+                + "Known modules: %s",
+            callerModule, callerPackage, details, getModuleNames());
     return new SecurityException(message);
   }
 }
