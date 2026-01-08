@@ -61,7 +61,7 @@ For capabilities like `threads.create` that use the `SIMPLE` category:
 
 #### Step 1: Add to Operation Enum (1 line)
 
-**File:** `agent-bootstrap/src/main/java/org/jguard/bootstrap/Operation.java`
+**File:** `agent-bootstrap/src/main/java/io/jguard/bootstrap/Operation.java`
 
 ```java
 public enum Operation {
@@ -76,7 +76,7 @@ public enum Operation {
 
 #### Step 2: Add Entry Point in BootstrapEnforcer (~5 lines)
 
-**File:** `agent-bootstrap/src/main/java/org/jguard/bootstrap/BootstrapEnforcer.java`
+**File:** `agent-bootstrap/src/main/java/io/jguard/bootstrap/BootstrapEnforcer.java`
 
 ```java
 /**
@@ -89,7 +89,7 @@ public static void onThreadCreate(Thread thread) {
 
 #### Step 3: Create Interceptor Advice (~20 lines)
 
-**File:** `agent/src/main/java/org/jguard/agent/ThreadInterceptor.java`
+**File:** `agent/src/main/java/io/jguard/agent/ThreadInterceptor.java`
 
 ```java
 public final class ThreadInterceptor {
@@ -110,7 +110,7 @@ public final class ThreadInterceptor {
 
 #### Step 4: Wire Advice in AgentInitializer (~5 lines)
 
-**File:** `agent/src/main/java/org/jguard/agent/AgentInitializer.java`
+**File:** `agent/src/main/java/io/jguard/agent/AgentInitializer.java`
 
 ```java
 // Thread.start() instrumentation
@@ -180,7 +180,7 @@ This is a one-time cost (~30 lines) that enables all future capabilities in that
 
 ### Unit Tests
 
-Add tests in `agent/src/test/java/org/jguard/agent/PolicyEnforcerTest.java`:
+Add tests in `agent/src/test/java/io/jguard/agent/PolicyEnforcerTest.java`:
 
 ```java
 @Nested
@@ -257,6 +257,89 @@ cd samples/sandbox-demo && ../../gradlew runWithAgent
 ../../gradlew runWithAgent -Pjguard.mode=permissive
 ```
 
+## Releasing (Maintainers Only)
+
+This section is for release managers with write access to Maven Central and Gradle Plugin Portal.
+
+### Prerequisites
+
+1. **Sonatype Central Portal access** - Must be a verified publisher for `io.jguard` namespace
+2. **Gradle Plugin Portal access** - Must have API keys for the jGuard plugin
+3. **GPG signing key** - Must have the jGuard release signing key
+
+### One-Time Setup
+
+Set environment variables (do not commit these):
+
+```bash
+# GPG signing (get key from secure storage)
+export ORG_GRADLE_PROJECT_signingInMemoryKey="$(cat /path/to/jguard-release-key.asc)"
+export ORG_GRADLE_PROJECT_signingInMemoryKeyId="KEY_ID_LAST_8_CHARS"
+export ORG_GRADLE_PROJECT_signingInMemoryKeyPassword="key-passphrase"
+
+# Maven Central (from https://central.sonatype.com/ → View Account → Generate User Token)
+export ORG_GRADLE_PROJECT_mavenCentralUsername="token-username"
+export ORG_GRADLE_PROJECT_mavenCentralPassword="token-password"
+
+# Gradle Plugin Portal (from https://plugins.gradle.org/ → API Keys)
+export GRADLE_PUBLISH_KEY="your-key"
+export GRADLE_PUBLISH_SECRET="your-secret"
+```
+
+### Release Process
+
+1. **Update version** in `build.gradle`:
+   ```groovy
+   allprojects {
+     version = "X.Y.Z"  // Remove -SNAPSHOT for release
+   }
+   ```
+
+2. **Build and test**:
+   ```bash
+   ./gradlew clean build
+   cd samples/sandbox-demo && ../../gradlew build
+   ```
+
+3. **Publish to Maven Central**:
+   ```bash
+   ./gradlew publishAllPublicationsToMavenCentralRepository
+   ```
+
+4. **Release on Central Portal**:
+   - Go to https://central.sonatype.com/publishing
+   - Verify artifacts are validated
+   - Click **Publish** to release
+
+5. **Publish Gradle plugin**:
+   ```bash
+   ./gradlew :gradle-plugin:publishPlugins
+   ```
+
+6. **Create GitHub release**:
+   ```bash
+   git tag v${VERSION}
+   git push origin v${VERSION}
+   ```
+   Then create a release on GitHub with changelog.
+
+7. **Bump to next snapshot**:
+   ```groovy
+   version = "X.Y.(Z+1)-SNAPSHOT"
+   ```
+
+### Published Artifacts
+
+| Artifact | Destination |
+|----------|-------------|
+| `io.jguard:jguard-core` | Maven Central |
+| `io.jguard:jguard-policy` | Maven Central |
+| `io.jguard:jguard-policy-java` | Maven Central |
+| `io.jguard:jguard-agent` | Maven Central |
+| `io.jguard:jguard-agent-bootstrap` | Maven Central |
+| `io.jguard:jguard-cli` | Maven Central |
+| `io.jguard.policy` plugin | Gradle Plugin Portal |
+
 ## Questions?
 
-Open an issue at https://github.com/lucenia/jguard/issues
+Open an issue at https://github.com/jguard-io/jguard/issues

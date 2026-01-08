@@ -93,14 +93,21 @@ shadowJar.doLast {
   }
 }
 
-// Make the standard jar task produce the shadow jar
-jar {
-  dependsOn shadowJar
-  enabled = false
-}
+// Disable the standard jar - shadowJar replaces it
+jar.enabled = false
 
 // Make assemble depend on shadowJar
 tasks.named("assemble") {
   dependsOn shadowJar
+}
+
+// Configure publishing to use shadowJar instead of jar
+afterEvaluate {
+  publishing.publications.named("maven") {
+    // Remove the default jar artifact and add shadowJar
+    def artifactsToRemove = artifacts.findAll { it.classifier == '' || it.classifier == null }
+    artifactsToRemove.each { artifacts.remove(it) }
+    artifact(shadowJar)
+  }
 }
 

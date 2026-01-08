@@ -8,6 +8,7 @@
 plugins {
   id "base"
   alias(libs.plugins.spotless)
+  alias(libs.plugins.maven.publish) apply false
 }
 
 allprojects {
@@ -25,8 +26,12 @@ subprojects {
     toolchain {
       languageVersion = JavaLanguageVersion.of(21)
     }
-    withJavadocJar()
-    withSourcesJar()
+    // Note: javadocJar and sourcesJar are added by vanniktech maven-publish plugin
+    // Only add them for gradle-plugin which doesn't use vanniktech
+    if (project.name == "gradle-plugin") {
+      withJavadocJar()
+      withSourcesJar()
+    }
   }
 
   repositories {
@@ -60,70 +65,42 @@ subprojects {
   // ---- Maven Central Publishing ----
   // Skip for gradle-plugin (uses Plugin Portal instead)
   if (project.name != "gradle-plugin") {
-    apply plugin: "maven-publish"
-    apply plugin: "signing"
+    apply plugin: "com.vanniktech.maven.publish"
 
-    publishing {
-      publications {
-        mavenJava(MavenPublication) {
-          from components.java
-          artifactId = "jguard-${moduleName}"
+    mavenPublishing {
+      publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
+      signAllPublications()
 
-          pom {
-            name = "jGuard ${project.name.capitalize()}"
-            description = "Capability-based security for the JVM"
-            url = "https://github.com/jguard-io/jguard"
-            inceptionYear = "2025"
+      coordinates("io.jguard", "jguard-${moduleName}", version)
 
-            licenses {
-              license {
-                name = "Apache-2.0"
-                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
-              }
-            }
+      pom {
+        name = "jGuard ${project.name.capitalize()}"
+        description = "Capability-based security for the JVM"
+        url = "https://github.com/jguard-io/jguard"
+        inceptionYear = "2025"
 
-            developers {
-              developer {
-                id = "jguard-contributors"
-                name = "jGuard Contributors"
-                organization = "jGuard"
-                organizationUrl = "https://jguard.io"
-              }
-            }
-
-            scm {
-              connection = "scm:git:git://github.com/jguard-io/jguard.git"
-              developerConnection = "scm:git:ssh://github.com/jguard-io/jguard.git"
-              url = "https://github.com/jguard-io/jguard"
-            }
+        licenses {
+          license {
+            name = "Apache-2.0"
+            url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
           }
         }
-      }
 
-      repositories {
-        maven {
-          name = "MavenCentral"
-          def releasesUrl = "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
-          def snapshotsUrl = "https://s01.oss.sonatype.org/content/repositories/snapshots/"
-          url = version.endsWith("-SNAPSHOT") ? snapshotsUrl : releasesUrl
-
-          credentials {
-            username = findProperty("ossrhUsername") ?: System.getenv("OSSRH_USERNAME")
-            password = findProperty("ossrhPassword") ?: System.getenv("OSSRH_PASSWORD")
+        developers {
+          developer {
+            id = "jguard-contributors"
+            name = "jGuard Contributors"
+            organization = "jGuard"
+            organizationUrl = "https://jguard.io"
           }
         }
-      }
-    }
 
-    signing {
-      // Only sign if credentials are available
-      required { !version.endsWith("-SNAPSHOT") && gradle.taskGraph.hasTask("publish") }
-      def signingKey = findProperty("signingKey") ?: System.getenv("GPG_SIGNING_KEY")
-      def signingPassword = findProperty("signingPassword") ?: System.getenv("GPG_SIGNING_PASSWORD")
-      if (signingKey && signingPassword) {
-        useInMemoryPgpKeys(signingKey, signingPassword)
+        scm {
+          connection = "scm:git:git://github.com/jguard-io/jguard.git"
+          developerConnection = "scm:git:ssh://github.com/jguard-io/jguard.git"
+          url = "https://github.com/jguard-io/jguard"
+        }
       }
-      sign publishing.publications.mavenJava
     }
   }
 }
