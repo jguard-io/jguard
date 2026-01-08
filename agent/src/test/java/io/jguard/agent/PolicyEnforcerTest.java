@@ -14,6 +14,7 @@ import io.jguard.bootstrap.AgentConfig;
 import io.jguard.bootstrap.CallerContext;
 import io.jguard.bootstrap.EnforcementMode;
 import io.jguard.bootstrap.Operation;
+import io.jguard.policy.model.ApplicationPolicy;
 import io.jguard.policy.model.CapabilityArgument;
 import io.jguard.policy.model.CapabilityGrant;
 import io.jguard.policy.model.Entitlement;
@@ -679,6 +680,15 @@ class PolicyEnforcerTest {
   }
 
   private PolicyEnforcer createEnforcer(PolicyDescriptor policy) {
+    AgentConfig config =
+        new AgentConfig.Builder()
+            .policyPath(tempDir.resolve("policy.bin"))
+            .mode(EnforcementMode.STRICT)
+            .build();
+    return new PolicyEnforcer(policy, config);
+  }
+
+  private PolicyEnforcer createEnforcer(ApplicationPolicy policy) {
     AgentConfig config =
         new AgentConfig.Builder()
             .policyPath(tempDir.resolve("policy.bin"))
