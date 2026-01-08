@@ -12,7 +12,7 @@ plugins {
 
 allprojects {
   group = "io.jguard"
-  version = "0.1.0-SNAPSHOT"
+  version = "0.1.0"
 }
 
 // Spotless configuration (license headers, formatting, linting)
@@ -56,4 +56,74 @@ subprojects {
   // :core -> jguard-core, :policy-java -> jguard-policy-java, etc.
   def moduleName = project.path.substring(1).replace(":", "-")
   archivesBaseName = "jguard-${moduleName}"
+
+  // ---- Maven Central Publishing ----
+  // Skip for gradle-plugin (uses Plugin Portal instead)
+  if (project.name != "gradle-plugin") {
+    apply plugin: "maven-publish"
+    apply plugin: "signing"
+
+    publishing {
+      publications {
+        mavenJava(MavenPublication) {
+          from components.java
+          artifactId = "jguard-${moduleName}"
+
+          pom {
+            name = "jGuard ${project.name.capitalize()}"
+            description = "Capability-based security for the JVM"
+            url = "https://github.com/jguard-io/jguard"
+            inceptionYear = "2025"
+
+            licenses {
+              license {
+                name = "Apache-2.0"
+                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+              }
+            }
+
+            developers {
+              developer {
+                id = "jguard-contributors"
+                name = "jGuard Contributors"
+                organization = "jGuard"
+                organizationUrl = "https://jguard.io"
+              }
+            }
+
+            scm {
+              connection = "scm:git:git://github.com/jguard-io/jguard.git"
+              developerConnection = "scm:git:ssh://github.com/jguard-io/jguard.git"
+              url = "https://github.com/jguard-io/jguard"
+            }
+          }
+        }
+      }
+
+      repositories {
+        maven {
+          name = "MavenCentral"
+          def releasesUrl = "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
+          def snapshotsUrl = "https://s01.oss.sonatype.org/content/repositories/snapshots/"
+          url = version.endsWith("-SNAPSHOT") ? snapshotsUrl : releasesUrl
+
+          credentials {
+            username = findProperty("ossrhUsername") ?: System.getenv("OSSRH_USERNAME")
+            password = findProperty("ossrhPassword") ?: System.getenv("OSSRH_PASSWORD")
+          }
+        }
+      }
+    }
+
+    signing {
+      // Only sign if credentials are available
+      required { !version.endsWith("-SNAPSHOT") && gradle.taskGraph.hasTask("publish") }
+      def signingKey = findProperty("signingKey") ?: System.getenv("GPG_SIGNING_KEY")
+      def signingPassword = findProperty("signingPassword") ?: System.getenv("GPG_SIGNING_PASSWORD")
+      if (signingKey && signingPassword) {
+        useInMemoryPgpKeys(signingKey, signingPassword)
+      }
+      sign publishing.publications.mavenJava
+    }
+  }
 }
