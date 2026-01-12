@@ -8,6 +8,7 @@
 package io.jguard.cli;
 
 import io.jguard.policy.model.ApplicationPolicy;
+import io.jguard.policy.model.Denial;
 import io.jguard.policy.model.Entitlement;
 import io.jguard.policy.model.ModulePolicy;
 import io.jguard.policy.model.PolicyDescriptor;
@@ -148,6 +149,25 @@ public final class InspectCommand implements Callable<Integer> {
             .sorted()
             .forEach(name -> out.println("    - " + name));
       }
+
+      // Show denials if present
+      if (!module.denials().isEmpty()) {
+        out.println("  Denials: " + module.denials().size());
+
+        if (verbose) {
+          for (Denial denial : module.denials()) {
+            out.println("    - " + formatDenial(denial));
+          }
+        } else {
+          // Just show capability names
+          module.denials().stream()
+              .map(d -> d.capability().name() + (d.defensive() ? " (defensive)" : ""))
+              .distinct()
+              .sorted()
+              .forEach(name -> out.println("    - " + name));
+        }
+      }
+
       out.println();
     }
   }
@@ -160,6 +180,23 @@ public final class InspectCommand implements Callable<Integer> {
       for (int i = 0; i < ent.capability().arguments().size(); i++) {
         if (i > 0) sb.append(", ");
         sb.append(ent.capability().arguments().get(i));
+      }
+      sb.append(")");
+    }
+    return sb.toString();
+  }
+
+  private String formatDenial(Denial denial) {
+    StringBuilder sb = new StringBuilder();
+    if (denial.defensive()) {
+      sb.append("[defensive] ");
+    }
+    sb.append(denial.subject()).append(" -> ").append(denial.capability().name());
+    if (!denial.capability().arguments().isEmpty()) {
+      sb.append("(");
+      for (int i = 0; i < denial.capability().arguments().size(); i++) {
+        if (i > 0) sb.append(", ");
+        sb.append(denial.capability().arguments().get(i));
       }
       sb.append(")");
     }

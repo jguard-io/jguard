@@ -282,22 +282,27 @@ public final class AgentConfig {
   }
 
   /**
-   * Returns the path to the policy override directory.
+   * Returns the path to the external policy directory.
    *
-   * <p>When set, the agent loads override files from this directory and merges them with embedded
-   * policies. Override semantics are restrictive-only: overrides can only REMOVE capabilities from
-   * the embedded policy, never add.
+   * <p>When set, the agent loads external policy files from this directory and merges them with
+   * embedded policies using grant/deny semantics:
+   *
+   * <ul>
+   *   <li>Grants from external policies are added to embedded grants (union)
+   *   <li>Denials remove capabilities from the effective policy (set difference)
+   *   <li>Denials always win over grants
+   * </ul>
    *
    * <p>Expected directory structure:
    *
    * <pre>
-   * /etc/myapp/overrides/
-   * ├── com.example.core.bin       # Override for com.example.core module
-   * ├── com.example.transport.bin  # Override for com.example.transport module
-   * └── _global.bin                # Global override (applies to ALL modules)
+   * /etc/myapp/policies/
+   * ├── com.example.core.bin       # External policy for com.example.core module
+   * ├── com.example.transport.bin  # External policy for com.example.transport module
+   * └── _global.bin                # Global policy (applies to ALL modules)
    * </pre>
    *
-   * @return the override directory path, or null if not specified
+   * @return the external policy directory path, or null if not specified
    */
   public Path overrideDir() {
     return overrideDir;
@@ -459,12 +464,13 @@ public final class AgentConfig {
     }
 
     /**
-     * Sets the policy override directory.
+     * Sets the external policy directory.
      *
-     * <p>Files in this directory can restrict (but not expand) embedded policies. See {@link
-     * AgentConfig#overrideDir()} for expected directory structure.
+     * <p>Files in this directory can grant additional capabilities or deny existing capabilities
+     * using grant/deny semantics. See {@link AgentConfig#overrideDir()} for expected directory
+     * structure.
      *
-     * @param path the override directory path
+     * @param path the external policy directory path
      * @return this builder
      */
     public Builder overrideDir(Path path) {

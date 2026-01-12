@@ -129,7 +129,7 @@ security module org.locationtech.proj4j {
 
 ```bash
 java -javaagent:jguard-agent.jar \
-     -Djguard.policy.external=/etc/myapp/policies \
+     -Djguard.policy.override=/etc/myapp/policies \
      -Djguard.reload=true \
      -Djguard.reload.interval=5 \
      -jar myapp.jar
@@ -139,7 +139,7 @@ java -javaagent:jguard-agent.jar \
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `jguard.policy.external` | — | Directory containing external policy files |
+| `jguard.policy.override` | — | Directory containing external policy files |
 | `jguard.reload` | `false` | Enable hot reload |
 | `jguard.reload.interval` | `5` | Seconds between reload checks |
 
@@ -375,27 +375,29 @@ Denial:
 
 ## Implementation Checklist
 
-| Component | File | Change | Effort |
+| Component | File | Change | Status |
 |-----------|------|--------|--------|
-| Lexer | `TokenType.java` | Add `DENY`, `DEFENSIVE` tokens | Tiny |
-| Lexer | `Lexer.java` | Recognize new keywords | Tiny |
-| Parser | `Parser.java` | Parse `deny` and `deny(defensive)` statements | Small |
-| AST | `DenyDeclaration.java` | New AST node (mirrors `EntitlementDeclaration`) | Small |
-| Model | `Denial.java` | New record for denial | Small |
-| Model | `PolicyDescriptor.java` | Add `List<Denial> denials()` | Small |
-| Validator | `PolicyValidator.java` | Validate deny syntax and capabilities | Small |
-| Serialization | `BinaryPolicyWriter.java` | Write denials, bump version to 3 | Small |
-| Serialization | `BinaryPolicyReader.java` | Read denials, handle version 3 | Small |
-| Serialization | `JsonPolicyWriter.java` | Include denials in JSON output | Small |
-| Agent | `PolicyMerger.java` | Update merge logic: `(grants) - (denials)` | Medium |
-| Agent | `PolicyMerger.java` | Add redundant deny warning logic | Small |
-| Agent | `AgentInitializer.java` | Unknown module warning | Small |
-| Agent | `ExternalPolicyLoader.java` | Load external policies from directory (new) | Medium |
-| Agent | `PolicyReloader.java` | Watch external directory (minor update) | Small |
-| CLI | `InspectCommand.java` | Display denials | Small |
-| CLI | `CompileCommand.java` | `--strict` flag (optional, can defer) | Small |
-| Tests | Various | Test all scenarios | Medium |
-| Docs | Update READMEs, spec | Document new feature | Medium |
+| Lexer | `TokenType.java` | Add `DENY`, `DEFENSIVE` tokens | ✅ Done |
+| Lexer | `Lexer.java` | Recognize new keywords | ✅ Done |
+| Parser | `Parser.java` | Parse `deny` and `deny(defensive)` statements | ✅ Done |
+| AST | `DenyDeclaration.java` | New AST node (mirrors `EntitlementDeclaration`) | ✅ Done |
+| Model | `Denial.java` | New record for denial | ✅ Done |
+| Model | `PolicyDescriptor.java` | Add `List<Denial> denials()` | ✅ Done |
+| Model | `ModulePolicy.java` | Add `List<Denial> denials()` | ✅ Done |
+| Model | `PolicyBuilder.java` | Build denials from AST | ✅ Done |
+| Validator | `PolicyValidator.java` | Validate deny syntax and capabilities | ✅ Done |
+| Serialization | `BinaryPolicyWriter.java` | Write denials in v2 format | ✅ Done |
+| Serialization | `BinaryPolicyReader.java` | Read denials from v2 format | ✅ Done |
+| Serialization | `JsonPolicyWriter.java` | Include denials in JSON output | ✅ Done |
+| Tests | `ParserTest.java` | Test deny parsing | ✅ Done |
+| Agent | `PolicyMerger.java` | Update merge logic: `(grants) - (denials)` | ✅ Done |
+| Agent | `PolicyMerger.java` | Add redundant deny warning logic | ✅ Done |
+| Agent | `PolicyMerger.java` | Unknown module warning | ✅ Done |
+| Agent | `PolicyReloader.java` | Watch external directory (already supports it) | ✅ Done |
+| CLI | `InspectCommand.java` | Display denials | ✅ Done |
+| CLI | `CompileCommand.java` | `--strict` flag (optional, can defer) | 🔲 Deferred |
+| Tests | `PolicyMergerTest.java` | Test merge logic and warnings | ✅ Done |
+| Docs | Update READMEs, spec | Document new feature | 🔲 TODO |
 
 ---
 

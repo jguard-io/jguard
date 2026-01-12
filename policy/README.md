@@ -18,11 +18,15 @@ The policy module provides the compiler infrastructure for jGuard policy descrip
 ### Grammar
 
 ```ebnf
-policy-file     = "security" "module" module-name "{" entitlement* "}" ;
+policy-file     = "security" "module" module-name "{" declaration* "}" ;
 
 module-name     = identifier ("." identifier)* ;
 
+declaration     = entitlement | denial ;
+
 entitlement     = "entitle" subject "to" capability ";" ;
+
+denial          = "deny" [ "(" "defensive" ")" ] subject "to" capability ";" ;
 
 subject         = "module"                    (* entire module *)
                 | package-pattern ;
@@ -58,6 +62,12 @@ security module com.example.myapp {
 
     // Grant recursively to package and all descendants
     entitle com.example.myapp.worker.. to threads.create;
+
+    // Deny native library loading for entire module
+    deny module to native.load;
+
+    // Defensive deny: suppress warning if not already granted
+    deny(defensive) module to system.property.write;
 
 }
 ```

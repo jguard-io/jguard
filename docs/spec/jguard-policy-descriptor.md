@@ -95,10 +95,16 @@ PolicyFile:
 
 ```
 SecurityModuleDeclaration:
-    security module ModuleName { EntitlementDeclaration* }
+    security module ModuleName { PolicyDeclaration* }
 ```
 
 The keywords `security` and `module` are reserved and may not be used as identifiers.
+
+```
+PolicyDeclaration:
+    EntitlementDeclaration
+    DenyDeclaration
+```
 
 ### 4.3 Module name
 
@@ -117,6 +123,18 @@ EntitlementDeclaration:
 ```
 
 Each entitlement declaration grants a capability to a subject.
+
+### 4.4a Deny declarations
+
+```
+DenyDeclaration:
+    deny Subject to Capability ;
+    deny ( defensive ) Subject to Capability ;
+```
+
+Each deny declaration removes a capability from a subject. Denials take precedence over grants.
+
+The `defensive` modifier suppresses warnings when denying a capability that was never granted. This is useful for proactive security policies that deny capabilities regardless of whether they exist in the embedded policy.
 
 ### 4.5 Subject
 
@@ -322,9 +340,28 @@ Implementations MUST reject entitlement declarations whose arguments do not conf
 
 * Multiple entitlements for the same subject are cumulative.
 * Duplicate entitlements are permitted but SHOULD be deduplicated internally.
-* No entitlement negation or revocation exists in this version.
 
-### 6.3 Default behavior
+### 6.3 Denial semantics
+
+* Denials remove capabilities from the effective policy.
+* Denials always take precedence over grants.
+* A denial matches an entitlement if the capability (name + arguments) is equal and the denial's subject pattern encompasses the entitlement's subject.
+* Subject pattern encompassing rules:
+  * `module` denial encompasses all subjects
+  * `pkg..` (recursive) denial encompasses `pkg`, `pkg.sub`, `pkg.sub.child`, etc.
+  * `pkg.*` (direct children) denial encompasses direct child packages
+  * `pkg` (exact) denial encompasses only the exact package
+* Duplicate denials are permitted but SHOULD be deduplicated internally.
+
+### 6.4 Defensive denials
+
+When a denial targets a capability that was never granted:
+* Without `defensive`: A warning is emitted at runtime
+* With `defensive`: No warning is emitted
+
+Use `deny(defensive)` for proactive security policies that deny capabilities regardless of whether they exist.
+
+### 6.5 Default behavior
 
 If no entitlement grants a capability to a subject, that capability is denied.
 
