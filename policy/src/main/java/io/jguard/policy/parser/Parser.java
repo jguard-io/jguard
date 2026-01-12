@@ -9,6 +9,7 @@ package io.jguard.policy.parser;
 
 import io.jguard.policy.ast.Argument;
 import io.jguard.policy.ast.Capability;
+import io.jguard.policy.ast.DenyDeclaration;
 import io.jguard.policy.ast.EntitlementDeclaration;
 import io.jguard.policy.ast.PackagePattern;
 import io.jguard.policy.ast.PolicyFile;
@@ -67,8 +68,16 @@ public final class Parser {
     consume(TokenType.LBRACE, "Expected '{' after module name");
 
     List<EntitlementDeclaration> entitlements = new ArrayList<>();
+    List<DenyDeclaration> denials = new ArrayList<>();
+
     while (!check(TokenType.RBRACE) && !isAtEnd()) {
-      entitlements.add(entitlementDeclaration());
+      if (check(TokenType.ENTITLE)) {
+        entitlements.add(entitlementDeclaration());
+      } else if (check(TokenType.DENY)) {
+        denials.add(denyDeclaration());
+      } else {
+        throw error(peek(), "Expected 'entitle' or 'deny'");
+      }
     }
 
     consume(TokenType.RBRACE, "Expected '}' to close security module");
@@ -78,7 +87,7 @@ public final class Parser {
       throw error(extra, "Unexpected content after security module declaration");
     }
 
-    return new PolicyFile(moduleName, entitlements, location);
+    return new PolicyFile(moduleName, entitlements, denials, location);
   }
 
   // EntitlementDeclaration: 'entitle' Subject 'to' Capability ';'
@@ -92,6 +101,27 @@ public final class Parser {
     consume(TokenType.SEMICOLON, "Expected ';' after capability");
 
     return new EntitlementDeclaration(subject, capability, location);
+  }
+
+  // DenyDeclaration: 'deny' ['(' 'defensive' ')'] Subject 'to' Capability ';'
+  private DenyDeclaration denyDeclaration() {
+    Token denyToken = consume(TokenType.DENY, "Expected 'deny'");
+    SourceLocation location = locationOf(denyToken);
+
+    // Check for (defensive) modifier
+    boolean defensive = false;
+    if (match(TokenType.LPAREN)) {
+      consume(TokenType.DEFENSIVE, "Expected 'defensive' after '(' in deny");
+      consume(TokenType.RPAREN, "Expected ')' after 'defensive'");
+      defensive = true;
+    }
+
+    Subject subject = subject();
+    consume(TokenType.TO, "Expected 'to' after subject");
+    Capability capability = capability();
+    consume(TokenType.SEMICOLON, "Expected ';' after capability");
+
+    return new DenyDeclaration(subject, capability, defensive, location);
   }
 
   // Subject: 'module' | PackagePattern

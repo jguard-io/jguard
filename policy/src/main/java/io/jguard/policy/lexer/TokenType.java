@@ -20,6 +20,12 @@ public enum TokenType {
   /** The 'entitle' keyword. */
   ENTITLE,
 
+  /** The 'deny' keyword. */
+  DENY,
+
+  /** The 'defensive' keyword (used with deny). */
+  DEFENSIVE,
+
   /** The 'to' keyword. */
   TO,
 

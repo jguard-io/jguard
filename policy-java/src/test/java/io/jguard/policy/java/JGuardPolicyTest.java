@@ -144,7 +144,7 @@ class JGuardPolicyTest {
     void builtPolicyHasCorrectFormatVersion() {
       PolicyDescriptor policy = JGuardPolicy.forModule("com.example.app").build();
 
-      assertThat(policy.formatVersion()).isEqualTo(1);
+      assertThat(policy.formatVersion()).isEqualTo(2);
     }
 
     @Test

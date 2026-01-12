@@ -295,7 +295,7 @@ class ModelTest {
     void createsPolicyDescriptor() {
       PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of());
 
-      assertThat(policy.formatVersion()).isEqualTo(1);
+      assertThat(policy.formatVersion()).isEqualTo(2);
       assertThat(policy.moduleName()).isEqualTo("com.example.app");
       assertThat(policy.entitlements()).isEmpty();
     }
@@ -370,8 +370,8 @@ class ModelTest {
     }
 
     @Test
-    void formatVersionIsOne() {
-      assertThat(PolicyDescriptor.FORMAT_VERSION).isEqualTo(1);
+    void formatVersionIsTwo() {
+      assertThat(PolicyDescriptor.FORMAT_VERSION).isEqualTo(2);
     }
   }
 }

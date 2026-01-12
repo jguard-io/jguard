@@ -9,6 +9,7 @@ package io.jguard.policy.validation;
 
 import io.jguard.policy.ast.Argument;
 import io.jguard.policy.ast.Capability;
+import io.jguard.policy.ast.DenyDeclaration;
 import io.jguard.policy.ast.EntitlementDeclaration;
 import io.jguard.policy.ast.PackagePattern;
 import io.jguard.policy.ast.PolicyFile;
@@ -84,6 +85,10 @@ public final class PolicyValidator {
       validateEntitlement(entitlement);
     }
 
+    for (DenyDeclaration denial : ast.denials()) {
+      validateDenial(denial);
+    }
+
     return new ValidationResult(diagnostics);
   }
 
@@ -106,6 +111,11 @@ public final class PolicyValidator {
   private void validateEntitlement(EntitlementDeclaration entitlement) {
     validateSubject(entitlement.subject());
     validateCapability(entitlement.capability());
+  }
+
+  private void validateDenial(DenyDeclaration denial) {
+    validateSubject(denial.subject());
+    validateCapability(denial.capability());
   }
 
   private void validateSubject(Subject subject) {

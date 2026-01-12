@@ -9,6 +9,7 @@ package io.jguard.policy.model;
 
 import io.jguard.policy.ast.Argument;
 import io.jguard.policy.ast.Capability;
+import io.jguard.policy.ast.DenyDeclaration;
 import io.jguard.policy.ast.EntitlementDeclaration;
 import io.jguard.policy.ast.PackagePattern;
 import io.jguard.policy.ast.PolicyFile;
@@ -38,6 +39,7 @@ public final class PolicyBuilder {
   public static PolicyDescriptor build(PolicyFile ast) {
     String moduleName = ast.moduleNameString();
     List<Entitlement> entitlements = new ArrayList<>();
+    List<Denial> denials = new ArrayList<>();
 
     for (EntitlementDeclaration decl : ast.entitlements()) {
       SubjectPattern subject = convertSubject(decl.subject());
@@ -45,8 +47,14 @@ public final class PolicyBuilder {
       entitlements.add(new Entitlement(subject, capability));
     }
 
+    for (DenyDeclaration decl : ast.denials()) {
+      SubjectPattern subject = convertSubject(decl.subject());
+      CapabilityGrant capability = convertCapability(decl.capability());
+      denials.add(new Denial(subject, capability, decl.defensive()));
+    }
+
     // PolicyDescriptor constructor handles sorting and deduplication
-    return PolicyDescriptor.create(moduleName, entitlements);
+    return PolicyDescriptor.create(moduleName, entitlements, denials);
   }
 
   private static SubjectPattern convertSubject(Subject subject) {
