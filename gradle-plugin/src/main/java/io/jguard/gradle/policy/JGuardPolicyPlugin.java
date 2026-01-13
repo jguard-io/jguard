@@ -22,6 +22,7 @@ import org.gradle.api.tasks.JavaExec;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.compile.JavaCompile;
+import org.gradle.api.tasks.testing.Test;
 import org.gradle.jvm.tasks.Jar;
 
 /**
@@ -144,13 +145,17 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                             });
                       });
 
-              // Configure module path inference for all Java compilation and execution tasks.
+              // Configure module path inference for main source compilation and execution tasks.
               // This ensures non-modular dependencies (legacy JARs without module-info.java)
               // are placed on the module path and become "automatic modules" that jGuard
               // can identify and enforce policies on.
+              //
+              // Tests are explicitly configured to run on the classpath (not module path)
+              // because JUnit, AssertJ, and other test frameworks don't have module descriptors.
               project
                   .getTasks()
-                  .withType(
+                  .named(
+                      JavaPlugin.COMPILE_JAVA_TASK_NAME,
                       JavaCompile.class,
                       task -> {
                         task.getModularity().getInferModulePath().set(true);
@@ -167,11 +172,33 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                               }
                             });
                       });
+
+              // Tests run on classpath (not module path) for JUnit/AssertJ compatibility
+              project
+                  .getTasks()
+                  .named(
+                      JavaPlugin.COMPILE_TEST_JAVA_TASK_NAME,
+                      JavaCompile.class,
+                      task -> {
+                        task.getModularity().getInferModulePath().set(false);
+                      });
+              project
+                  .getTasks()
+                  .withType(
+                      Test.class,
+                      task -> {
+                        task.getModularity().getInferModulePath().set(false);
+                      });
+
               project
                   .getTasks()
                   .withType(
                       JavaExec.class,
                       task -> {
+                        // Skip test-related JavaExec tasks
+                        if (task.getName().toLowerCase().contains("test")) {
+                          return;
+                        }
                         task.getModularity().getInferModulePath().set(true);
                         // For automatic modules without Automatic-Module-Name manifest attribute,
                         // Gradle's inferModulePath doesn't work. Force module path explicitly.

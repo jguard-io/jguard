@@ -31,3 +31,7 @@ includeBuild("..") {
 }
 
 include("sandbox-demo")
+include("sandbox-external-policy")
+include("sandbox-hot-reload")
+include("sandbox-legacy-library")
+include("sandbox-multimodule")

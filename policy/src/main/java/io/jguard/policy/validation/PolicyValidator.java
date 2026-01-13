@@ -86,7 +86,7 @@ public final class PolicyValidator {
     }
 
     for (DenyDeclaration denial : ast.denials()) {
-      validateDenial(denial);
+      validateDenial(denial, ast.entitlements());
     }
 
     return new ValidationResult(diagnostics);
@@ -113,9 +113,45 @@ public final class PolicyValidator {
     validateCapability(entitlement.capability());
   }
 
-  private void validateDenial(DenyDeclaration denial) {
+  private void validateDenial(DenyDeclaration denial, List<EntitlementDeclaration> entitlements) {
     validateSubject(denial.subject());
     validateCapability(denial.capability());
+
+    // Check for redundant denies - warn if denial doesn't match any grant
+    // Skip if denial is marked as defensive
+    if (!denial.defensive()) {
+      String denyCapability = denial.capability().name();
+      boolean matchesAnyGrant =
+          entitlements.stream().anyMatch(e -> e.capability().name().equals(denyCapability));
+
+      if (!matchesAnyGrant) {
+        warning(
+            "Redundant deny: '"
+                + formatSubject(denial.subject())
+                + "' -> "
+                + denyCapability
+                + " (not in granted set). Use 'deny(defensive)' to suppress",
+            denial.capability().location());
+      }
+    }
+  }
+
+  private String formatSubject(Subject subject) {
+    return switch (subject) {
+      case Subject.Module m -> "module";
+      case Subject.Package p -> formatPackagePattern(p.pattern());
+    };
+  }
+
+  private String formatPackagePattern(PackagePattern pattern) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(String.join(".", pattern.segments()));
+    switch (pattern.matchType()) {
+      case EXACT -> {}
+      case RECURSIVE -> sb.append("..");
+      case DIRECT_SUBPACKAGES -> sb.append(".*");
+    }
+    return sb.toString();
   }
 
   private void validateSubject(Subject subject) {
@@ -399,6 +435,16 @@ public final class PolicyValidator {
             message, sourcePath, location.line(), location.column()));
   }
 
+  private void warning(String message, SourceLocation location) {
+    diagnostics.add(
+        new CompilationResult.Diagnostic(
+            CompilationResult.Severity.WARNING,
+            message,
+            sourcePath,
+            location.line(),
+            location.column()));
+  }
+
   private static boolean isValidJavaIdentifier(String s) {
     return s != null && !s.isEmpty() && JAVA_IDENTIFIER.matcher(s).matches();
   }
@@ -485,6 +531,15 @@ public final class PolicyValidator {
      */
     public boolean hasErrors() {
       return diagnostics.stream().anyMatch(d -> d.severity() == CompilationResult.Severity.ERROR);
+    }
+
+    /**
+     * Returns true if there were any validation warnings.
+     *
+     * @return true if warnings exist
+     */
+    public boolean hasWarnings() {
+      return diagnostics.stream().anyMatch(d -> d.severity() == CompilationResult.Severity.WARNING);
     }
 
     /**

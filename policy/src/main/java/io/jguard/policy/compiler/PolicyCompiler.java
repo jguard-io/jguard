@@ -93,7 +93,12 @@ public final class PolicyCompiler {
       Files.writeString(jsonOutput, json);
     }
 
-    return CompilationResult.success();
+    // Return success with any warnings
+    if (result.diagnostics().isEmpty()) {
+      return CompilationResult.success();
+    } else {
+      return CompilationResult.successWithWarnings(result.diagnostics());
+    }
   }
 
   /**
@@ -138,8 +143,10 @@ public final class PolicyCompiler {
     PolicyValidator validator = new PolicyValidator(sourcePath);
     PolicyValidator.ValidationResult validationResult = validator.validate(ast);
 
+    // Always collect all diagnostics (errors and warnings)
+    diagnostics.addAll(validationResult.diagnostics());
+
     if (validationResult.hasErrors()) {
-      diagnostics.addAll(validationResult.diagnostics());
       return new CompileResult(null, diagnostics);
     }
 
