@@ -35,7 +35,7 @@ import picocli.CommandLine.Spec;
 @Command(
     name = "jguardc",
     mixinStandardHelpOptions = true,
-    version = "jguardc 0.1.0",
+    versionProvider = VersionProvider.JGuardc.class,
     description = "Compile jGuard policy descriptors")
 public final class JGuardc implements Callable<Integer> {
 
