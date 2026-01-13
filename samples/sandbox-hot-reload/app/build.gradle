@@ -1,0 +1,105 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+plugins {
+  id "application"
+  id "io.jguard.policy"
+}
+
+// Java toolchain is configured in root build.gradle
+
+application {
+  mainClass = "io.jguard.samples.hotreload.Main"
+}
+
+// Signing configuration for production-like setup
+def keystoreFile = file("${rootDir}/keystore/demo.keystore")
+def keystorePassword = "changeit"
+def keyAlias = "demo"
+
+// Sign the JAR for policy verification
+tasks.named("jar", Jar) {
+  doLast {
+    if (keystoreFile.exists()) {
+      ant.signjar(
+        jar: archiveFile.get().asFile,
+        keystore: keystoreFile,
+        storepass: keystorePassword,
+        alias: keyAlias
+      )
+      logger.lifecycle("Signed JAR: ${archiveFile.get().asFile}")
+    }
+  }
+}
+
+// Configure jGuard policy plugin for hot reload
+jguardPolicy {
+  // Discovery mode (default) - policies discovered from signed JARs
+  // Discovery mode scans JARs on the classpath for embedded policies
+
+  // Enable hot reload of external policies
+  hotReload = true
+  hotReloadInterval = 2  // Check every 2 seconds
+
+  // External policies directory (hot reloadable)
+  externalPoliciesSourceDir = file("policies-src")
+  externalPoliciesOutputDir = file("policies")
+}
+
+// Create a custom run task that runs from the installed distribution
+// This ensures we're running from signed JARs, not class files
+tasks.register("runDemo", JavaExec) {
+  group = "application"
+  description = "Run the demo from installed distribution with jGuard agent"
+
+  dependsOn("installDist", "compileExternalPolicies")
+
+  def jguardBuild = gradle.includedBuild("jguard")
+  dependsOn(jguardBuild.task(":agent:jar"))
+
+  doFirst {
+    // Find the agent JAR
+    def agentJar = file("${jguardBuild.projectDir}/agent/build/libs")
+        .listFiles()
+        ?.find { it.name.startsWith("jguard-agent-") && it.name.endsWith(".jar") && !it.name.contains("-sources") }
+
+    if (agentJar == null) {
+      throw new GradleException("Agent JAR not found. Run ':jguard:agent:jar' first.")
+    }
+
+    // Set up classpath from installed distribution
+    def libDir = file("${buildDir}/install/${project.name}/lib")
+    classpath = fileTree(libDir) { include "*.jar" }
+
+    // Set main class
+    mainClass.set(application.mainClass)
+
+    // Configure JVM args
+    def jvmArgsList = []
+    jvmArgsList << "-javaagent:${agentJar.absolutePath}"
+    jvmArgsList << "-Djguard.reload=true"
+    jvmArgsList << "-Djguard.reload.interval=2"
+    jvmArgsList << "-Djguard.policy.override=${file('policies').absolutePath}"
+
+    setJvmArgs(jvmArgsList)
+
+    logger.lifecycle("Running with jGuard agent...")
+    logger.lifecycle("  Agent: ${agentJar}")
+    logger.lifecycle("  Policy: discovery mode (from signed JARs)")
+    logger.lifecycle("  External policies: ${file('policies').absolutePath}")
+    logger.lifecycle("  Hot reload: enabled (interval=2s)")
+  }
+}
+
+// ============================================================================
+// NOTE: The following is ONLY needed because this sample uses composite builds
+// to reference the local jGuard project. Real users would NOT need this block.
+// ============================================================================
+tasks.named("runWithAgent") {
+  def jguardBuild = gradle.includedBuild("jguard")
+  dependsOn(jguardBuild.task(":agent:jar"))
+}

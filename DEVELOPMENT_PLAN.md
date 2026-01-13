@@ -456,6 +456,92 @@ Additional features:
 
 ---
 
+## v0.2.0 Features
+
+### M6.1 — External Policy Grant/Deny ✓
+
+External policies allow deployers to modify module permissions at deployment time without changing embedded policies:
+
+**Core Features:**
+
+* **Grant statements**: Add permissions not in embedded policy
+  * `entitle module to network.outbound("db.prod.internal", 5432);`
+* **Deny statements**: Revoke permissions from embedded policy
+  * `deny module to native.load;`
+* **Defensive denials**: Suppress warnings for capabilities not granted
+  * `deny(defensive) module to system.property.write;`
+* **Global policies**: Apply denials to ALL modules via `_global.bin`
+
+**Merge Semantics:**
+
+```
+effective = (embedded ∪ external_grants ∪ global_grants) - (external_denials ∪ global_denials)
+```
+
+* Grants are additive (union with embedded)
+* Denials are subtractive (remove from grant set)
+* Denials win if both grant and deny exist for same capability
+
+**Subject Pattern Matching:**
+
+| Denial Subject | Matches Entitlements |
+|----------------|---------------------|
+| `module` | Any subject in the module |
+| `pkg..` | `pkg..`, `pkg.*`, `pkg`, or any descendant |
+| `pkg.*` | `pkg.*` or direct children |
+| `pkg` | Only exact `pkg` match |
+
+**Implementation:**
+
+* `PolicyMerger.merge()` implements grant/deny merge logic
+* External policy directory via `-Djguard.policy.override=/path/to/policies`
+* Hot reload support for external policies
+* Redundant denial warnings (non-defensive)
+* Unknown module policy warnings
+
+**File Structure:**
+
+```
+policies/
+├── _global.bin                    # Global policy (all modules)
+├── com.example.untrusted.lib.bin  # Module-specific policy
+└── org.example.database.bin       # Another module-specific policy
+```
+
+**Binary Format:**
+
+* v2 format now includes denial count and denial records after entitlements
+* Denial record: subject + capability + defensive flag
+
+**Use Cases:**
+
+1. **Restrict third-party libraries**: Deny dangerous capabilities from untrusted code
+2. **Organization-wide policy**: Global denials for security standards
+3. **Expand library permissions**: Grant production credentials to trusted libraries
+4. **Defense in depth**: Defensive denials for capabilities that shouldn't exist
+
+**Gradle Plugin Support:**
+
+* `compileExternalPolicies` task compiles `.jguard` files from configured directory
+* Configuration via `jguardPolicy.externalPoliciesSourceDir` and `externalPoliciesOutputDir`
+
+**Demo:**
+
+`samples/sandbox-external-policy/` demonstrates:
+* Overly permissive library with broad embedded grants
+* External policies that restrict the library at deployment
+* Global denials applied to all modules
+
+Exit criteria:
+
+* External grants expand embedded permissions ✓
+* External denials revoke embedded permissions ✓
+* Global denials apply to all modules ✓
+* Defensive denials suppress warnings ✓
+* sandbox-external-policy demo working ✓
+
+---
+
 ## Post-v0.1.0 Roadmap
 
 ### M7 — Process Execution Control

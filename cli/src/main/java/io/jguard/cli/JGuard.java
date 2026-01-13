@@ -11,12 +11,13 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 
 /**
- * jGuard CLI - Policy management and inspection tools.
+ * jGuard CLI - Policy inspection and validation tools.
+ *
+ * <p>For compiling policies, use {@code jguardc}.
  *
  * <p>Usage:
  *
  * <pre>
- * jguard compile -o policy.bin module-info.jguard
  * jguard inspect mymodule.jar
  * jguard list --module-path libs/
  * jguard diff embedded.bin override.bin
@@ -27,9 +28,8 @@ import picocli.CommandLine.Command;
     name = "jguard",
     mixinStandardHelpOptions = true,
     version = "jguard 0.2.0",
-    description = "jGuard policy management and inspection tools",
+    description = "jGuard policy inspection and validation tools",
     subcommands = {
-      CompileCommand.class,
       InspectCommand.class,
       ListCommand.class,
       DiffCommand.class,

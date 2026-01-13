@@ -1,0 +1,16 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Sample policy demonstrating various entitlements.
+//
+
+security module com.example.sample {
+    // Filesystem access with glob pattern
+    entitle module to fs.read("/data", "**/*.json");
+
+    // Network outbound to specific host
+    entitle module to network.outbound("api.example.com", 443);
+
+    // Thread creation
+    entitle module to threads.create;
+}

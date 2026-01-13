@@ -1,0 +1,15 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Invalid override - grants capability not in base policy!
+// This should FAIL validation.
+//
+
+security module com.example.sample {
+    // This exists in base policy - OK
+    entitle module to threads.create;
+
+    // ERROR: env.read is NOT in base policy!
+    // Overrides cannot grant capabilities not in the embedded policy.
+    entitle module to env.read;
+}

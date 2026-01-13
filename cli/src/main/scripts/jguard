@@ -1,0 +1,23 @@
+#!/bin/sh
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# jGuard CLI launcher script
+#
+
+# Resolve the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LIB_DIR="$SCRIPT_DIR/../lib"
+
+# Build classpath from all JARs in lib directory
+CLASSPATH=""
+for jar in "$LIB_DIR"/*.jar; do
+  if [ -z "$CLASSPATH" ]; then
+    CLASSPATH="$jar"
+  else
+    CLASSPATH="$CLASSPATH:$jar"
+  fi
+done
+
+# Run the CLI
+exec java -cp "$CLASSPATH" io.jguard.cli.JGuard "$@"

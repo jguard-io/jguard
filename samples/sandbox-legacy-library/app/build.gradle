@@ -1,0 +1,46 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+plugins {
+  id "application"
+  id "io.jguard.policy"
+}
+
+// Java toolchain is configured in root build.gradle
+
+application {
+  mainClass = "io.jguard.samples.legacy.app.Main"
+  // mainModule is auto-detected from module-info.java by jGuard plugin
+}
+
+repositories {
+  mavenLocal()  // Simulates Maven Central - library is pre-published
+}
+
+dependencies {
+  // Depend on a pre-compiled JAR with NO jGuard policy (like any Maven Central library)
+  implementation "com.example:legacy-library:1.0.0"
+}
+
+// Configure jGuard policy plugin
+jguardPolicy {
+  // Allow unsigned JARs for this demo (production should use signed JARs)
+  allowUnsignedPolicies = true
+
+  // External policies directory - grants capabilities to the legacy library
+  externalPoliciesSourceDir = file("policies-src")
+  externalPoliciesOutputDir = file("policies")
+}
+
+// ============================================================================
+// NOTE: The following is ONLY needed because this sample uses composite builds
+// to reference the local jGuard project. Real users would NOT need this block.
+// ============================================================================
+tasks.named("runWithAgent") {
+  def jguardBuild = gradle.includedBuild("jguard")
+  dependsOn(jguardBuild.task(":agent:jar"))
+}

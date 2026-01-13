@@ -1,0 +1,19 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Restrictive override policy (for diff demo).
+// This restricts the base policy to only trusted hosts.
+//
+
+security module com.example.sample {
+    // Restricted filesystem access
+    entitle module to fs.read("/data", "**/*.json");
+
+    // Restricted network access - only trusted host
+    entitle module to network.outbound("trusted.com", 443);
+
+    // Thread creation allowed
+    entitle module to threads.create;
+
+    // Native loading NOT granted (more secure)
+}

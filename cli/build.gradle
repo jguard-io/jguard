@@ -15,8 +15,37 @@ dependencies {
   implementation(libs.slf4j.api)
 }
 
+// Primary application: jguardc (compiler only - backward compatible)
 application {
   mainClass = "io.jguard.cli.JGuardc"
   applicationName = "jguardc"
+}
+
+// Secondary application: jguard (full CLI with subcommands)
+tasks.register("installJGuard", Sync) {
+  group = "distribution"
+  description = "Installs the jguard CLI (full CLI with subcommands)"
+
+  def jarTask = tasks.named("jar")
+  def runtimeClasspath = configurations.runtimeClasspath
+
+  dependsOn(jarTask)
+
+  into(layout.buildDirectory.dir("install/jguard"))
+
+  into("lib") {
+    from(jarTask)
+    from(runtimeClasspath)
+  }
+
+  into("bin") {
+    from(layout.projectDirectory.file("src/main/scripts/jguard"))
+    fileMode = 0755
+  }
+}
+
+// Make installDist also install jguard
+tasks.named("installDist") {
+  finalizedBy("installJGuard")
 }
 

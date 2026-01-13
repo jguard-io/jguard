@@ -1,0 +1,32 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+plugins {
+  id "java-library"
+}
+
+// Java toolchain is configured in root build.gradle
+
+// Name the JAR to demonstrate auto-derived module naming
+// legacy-library.jar -> module name "legacy.library"
+// (Java converts hyphens to dots in automatic module names)
+jar {
+  archiveBaseName = "legacy-library"
+}
+
+plugins.withType(MavenPublishPlugin) { }
+apply plugin: 'maven-publish'
+publishing {
+  publications {
+    maven(MavenPublication) {
+      groupId = 'com.example'
+      artifactId = 'legacy-library'
+      version = '1.0.0'
+      from components.java
+    }
+  }
+}

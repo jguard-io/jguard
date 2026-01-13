@@ -1,0 +1,37 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The jGuard Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+
+// This embedded policy is deliberately OVERLY PERMISSIVE to demonstrate
+// how external policies can restrict it at deployment time.
+//
+// In a real scenario, this might be a third-party library that:
+// - Grants network access to the entire module (when only one package needs it)
+// - Grants native.load broadly (creating security risk)
+// - Was released before certain security concerns were identified
+
+security module io.jguard.samples.external.library {
+
+    // OVERLY PERMISSIVE: Grants network.outbound to ENTIRE module
+    // In reality, only the .http package might need this
+    entitle module to network.outbound;
+
+    // OVERLY PERMISSIVE: Grants threads.create to ENTIRE module
+    // In reality, only the .worker package might need this
+    entitle module to threads.create;
+
+    // OVERLY PERMISSIVE: Grants native.load to ENTIRE module
+    // This is a significant security risk!
+    entitle module to native.load;
+
+    // Legitimate: filesystem read for config
+    entitle module to fs.read("config", "**");
+
+    // Legitimate: system property read
+    entitle module to system.property.read;
+
+}

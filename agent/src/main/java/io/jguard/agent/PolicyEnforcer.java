@@ -100,6 +100,17 @@ public final class PolicyEnforcer {
     return policy.hasModule(moduleName);
   }
 
+  /**
+   * Returns the underlying application policy.
+   *
+   * <p>This is exposed for policy comparison during hot reload.
+   *
+   * @return the application policy
+   */
+  ApplicationPolicy getPolicy() {
+    return policy;
+  }
+
   // ========== SINGLE DISPATCH ENTRY POINT ==========
 
   /**
@@ -612,11 +623,13 @@ public final class PolicyEnforcer {
   private boolean subjectMatches(SubjectPattern subject, String callerPackage, String moduleName) {
     return switch (subject.type()) {
       case MODULE ->
-          // Module-wide grant: matches any package in this module.
-          // For unnamed modules (classpath), allow any package since classpath code
-          // can come from arbitrary packages.
-          ApplicationPolicy.UNNAMED_MODULE.equals(moduleName)
-              || callerPackage.startsWith(moduleName);
+          // Module-wide grant: always matches since we're already in the correct module's policy.
+          // getPolicy() ensures we're looking at the right module, so MODULE pattern matches
+          // any package within that module. This handles:
+          // - Named JPMS modules (package prefix typically matches module name)
+          // - Automatic modules (package prefix doesn't match JAR-derived module name)
+          // - Unnamed modules (classpath code from arbitrary packages)
+          true;
       case PACKAGE_EXACT ->
           // Exact package match
           callerPackage.equals(subject.packageName());

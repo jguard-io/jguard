@@ -1,0 +1,17 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The jGuard Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+
+// The application has minimal embedded permissions.
+// It primarily relies on the library for sensitive operations.
+
+security module io.jguard.samples.external.app {
+
+    // The app itself just needs to read system properties for configuration
+    entitle module to system.property.read;
+
+}

@@ -277,7 +277,8 @@ public final class BootstrapEnforcer {
    * @param libraryName the name of the library being loaded
    */
   public static void onNativeLoad(String libraryName) {
-    dispatch(Operation.NATIVE_LOAD, libraryName != null ? libraryName : "unknown", 0);
+    String libName = libraryName != null ? libraryName : "unknown";
+    dispatch(Operation.NATIVE_LOAD, libName, 0);
   }
 
   // ========== ENVIRONMENT VARIABLE ENTRY POINTS ==========
