@@ -11,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.jguard.policy.ast.Argument;
 import io.jguard.policy.ast.Capability;
+import io.jguard.policy.ast.DenyDeclaration;
 import io.jguard.policy.ast.EntitlementDeclaration;
 import io.jguard.policy.ast.PackagePattern;
 import io.jguard.policy.ast.PolicyFile;
@@ -699,5 +700,106 @@ class PolicyValidatorTest {
       assertThat(result.hasErrors()).isTrue();
       assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("out of range"));
     }
+  }
+
+  @Nested
+  class RedundantDenyWarningTest {
+
+    @Test
+    void warnsOnRedundantDeny() {
+      // Deny a capability that was never granted
+      DenyDeclaration denial = moduleDeny("threads.create", false);
+      PolicyFile ast = policyFileWithDenials(List.of("app"), List.of(), List.of(denial));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      // Should be valid (no errors) but have a warning
+      assertThat(result.isValid()).isTrue();
+      assertThat(result.hasWarnings()).isTrue();
+      assertThat(result.diagnostics())
+          .anyMatch(
+              d ->
+                  d.severity() == CompilationResult.Severity.WARNING
+                      && d.message().contains("Redundant deny")
+                      && d.message().contains("threads.create"));
+    }
+
+    @Test
+    void noWarningWhenDenyMatchesGrant() {
+      // Grant and then deny the same capability
+      EntitlementDeclaration grant = moduleEntitlement("threads.create");
+      DenyDeclaration denial = moduleDeny("threads.create", false);
+      PolicyFile ast = policyFileWithDenials(List.of("app"), List.of(grant), List.of(denial));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      // Should have no warnings
+      assertThat(result.isValid()).isTrue();
+      assertThat(result.hasWarnings()).isFalse();
+    }
+
+    @Test
+    void defensiveDenySuppressesWarning() {
+      // Defensive deny should not produce a warning even if capability not granted
+      DenyDeclaration denial = moduleDeny("threads.create", true);
+      PolicyFile ast = policyFileWithDenials(List.of("app"), List.of(), List.of(denial));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      // Should have no warnings
+      assertThat(result.isValid()).isTrue();
+      assertThat(result.hasWarnings()).isFalse();
+    }
+
+    @Test
+    void warningIncludesSubjectInfo() {
+      // Test that warning message includes subject pattern
+      Subject subject =
+          new Subject.Package(
+              new PackagePattern(
+                  List.of("com", "example"), PackagePattern.MatchType.RECURSIVE, LOC),
+              LOC);
+      Capability capability = new Capability(List.of("network", "outbound"), List.of(), LOC);
+      DenyDeclaration denial = new DenyDeclaration(subject, capability, false, LOC);
+      PolicyFile ast = policyFileWithDenials(List.of("app"), List.of(), List.of(denial));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasWarnings()).isTrue();
+      assertThat(result.diagnostics())
+          .anyMatch(
+              d -> d.message().contains("com.example..") && d.message().contains("Redundant"));
+    }
+
+    @Test
+    void multipleRedundantDeniesProduceMultipleWarnings() {
+      DenyDeclaration denial1 = moduleDeny("threads.create", false);
+      DenyDeclaration denial2 = moduleDeny("native.load", false);
+      PolicyFile ast = policyFileWithDenials(List.of("app"), List.of(), List.of(denial1, denial2));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      // Should have two warnings
+      long warningCount =
+          result.diagnostics().stream()
+              .filter(d -> d.severity() == CompilationResult.Severity.WARNING)
+              .count();
+      assertThat(warningCount).isEqualTo(2);
+    }
+  }
+
+  // ===== Additional Helper Methods for Denials =====
+
+  private PolicyFile policyFileWithDenials(
+      List<String> moduleName,
+      List<EntitlementDeclaration> entitlements,
+      List<DenyDeclaration> denials) {
+    return new PolicyFile(moduleName, entitlements, denials, LOC);
+  }
+
+  private DenyDeclaration moduleDeny(String capabilityName, boolean defensive) {
+    Subject subject = new Subject.Module(LOC);
+    Capability capability = new Capability(List.of(capabilityName.split("\\.")), List.of(), LOC);
+    return new DenyDeclaration(subject, capability, defensive, LOC);
   }
 }

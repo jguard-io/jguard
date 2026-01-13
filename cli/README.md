@@ -49,6 +49,7 @@ jguardc [OPTIONS] <source>
 |--------|-------------|
 | `-o, --output <path>` | **(Required)** Output path for the compiled binary policy file |
 | `--json <path>` | Also output JSON format to the specified path |
+| `--strict` | Treat warnings as errors (exit with failure if any warnings) |
 | `-v, --verbose` | Enable verbose output |
 | `-h, --help` | Show help message and exit |
 | `-V, --version` | Print version info and exit |
@@ -69,6 +70,27 @@ jguardc -o build/policy.bin --json build/policy.json src/main/java/module-info.j
 ```bash
 jguardc -v -o build/policy.bin src/main/java/module-info.jguard
 ```
+
+**Strict mode (for CI pipelines):**
+```bash
+# Fails if there are any warnings (e.g., redundant deny statements)
+jguardc --strict -o build/policy.bin src/main/java/module-info.jguard
+```
+
+### Warnings
+
+The compiler may produce warnings for issues that don't prevent compilation:
+
+| Warning | Description | Suppression |
+|---------|-------------|-------------|
+| Redundant deny | A `deny` targets a capability that was never granted | Use `deny(defensive)` |
+
+**Example warning:**
+```
+src/main/java/module-info.jguard:10:5: warning: Redundant deny: 'module' -> threads.create (not in granted set). Use 'deny(defensive)' to suppress
+```
+
+In `--strict` mode, warnings are treated as errors and cause the compiler to exit with code 1.
 
 ---
 

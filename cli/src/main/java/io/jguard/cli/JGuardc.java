@@ -60,6 +60,11 @@ public final class JGuardc implements Callable<Integer> {
       description = "Enable verbose output")
   private boolean verbose;
 
+  @Option(
+      names = {"--strict"},
+      description = "Treat warnings as errors (exit with failure if any warnings)")
+  private boolean strict;
+
   public static void main(String[] args) {
     int exitCode = new CommandLine(new JGuardc()).execute(args);
     System.exit(exitCode);
@@ -77,12 +82,24 @@ public final class JGuardc implements Callable<Integer> {
       CompilationResult result = PolicyCompiler.compile(source, output, jsonOutput);
 
       if (result.isSuccess()) {
+        // Print any warnings
+        for (CompilationResult.Diagnostic diagnostic : result.diagnostics()) {
+          printDiagnostic(err, diagnostic);
+        }
+
         if (verbose) {
           err.println("jguardc: wrote " + output);
           if (jsonOutput != null) {
             err.println("jguardc: wrote " + jsonOutput);
           }
         }
+
+        // In strict mode, warnings are treated as errors
+        if (strict && result.hasWarnings()) {
+          err.println("jguardc: compilation failed due to warnings (--strict mode)");
+          return 1;
+        }
+
         return 0;
       } else {
         for (CompilationResult.Diagnostic diagnostic : result.diagnostics()) {

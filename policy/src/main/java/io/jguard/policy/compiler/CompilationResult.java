@@ -36,6 +36,19 @@ public final class CompilationResult {
   }
 
   /**
+   * Creates a successful result with warnings.
+   *
+   * @param warnings the warnings (must only contain WARNING severity)
+   * @return the successful result with warnings
+   */
+  public static CompilationResult successWithWarnings(List<Diagnostic> warnings) {
+    if (warnings.stream().anyMatch(d -> d.severity() == Severity.ERROR)) {
+      throw new IllegalArgumentException("Cannot create success with errors");
+    }
+    return new CompilationResult(true, warnings);
+  }
+
+  /**
    * Creates a failed result with the given diagnostics.
    *
    * @param diagnostics the compilation errors (must not be empty)
@@ -74,6 +87,15 @@ public final class CompilationResult {
    */
   public boolean isFailure() {
     return !success;
+  }
+
+  /**
+   * Returns true if there are any warnings.
+   *
+   * @return true if warnings exist
+   */
+  public boolean hasWarnings() {
+    return diagnostics.stream().anyMatch(d -> d.severity() == Severity.WARNING);
   }
 
   /**

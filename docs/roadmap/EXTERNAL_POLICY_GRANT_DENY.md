@@ -221,16 +221,19 @@ This catches typos while allowing forward-compatibility (policy for future modul
 | Redundant deny | **Warning** | Deny targets capability not in granted set |
 | Redundant deny (defensive) | **Silent** | Suppressed by `deny(defensive)` |
 
-### Compile-Time Validation (Strict Mode - Optional)
+### Compile-Time Validation (Strict Mode)
 
 ```bash
-jguard compile --strict --known-modules modules.list policy.jguard
+jguardc --strict -o policy.bin policy.jguard
 ```
 
-| Check | Severity | Description |
-|-------|----------|-------------|
-| Unknown module | **Error** | Must match module in provided list |
-| Redundant deny | **Error** | Deny must match known grant |
+In strict mode, warnings are treated as errors:
+
+| Check | Severity (Default) | Severity (Strict) |
+|-------|-------------------|-------------------|
+| Redundant deny | **Warning** | **Error** |
+
+Note: Redundant deny warnings can be suppressed with `deny(defensive)`.
 
 ---
 
@@ -276,22 +279,23 @@ External policies are hot-reloadable (existing infrastructure):
 
 ### Compile Command
 
-Existing `jguard compile` handles new `deny` syntax automatically:
+The `jguardc` compiler handles `deny` syntax:
 
 ```bash
 # Compile external policy with deny statements
-jguard compile -o policy.bin external-policy.jguard
+jguardc -o policy.bin external-policy.jguard
 ```
 
-### Strict Mode (Optional, Can Defer)
+### Strict Mode
+
+Use `--strict` to treat warnings as errors:
 
 ```bash
-# Generate module list from your app
-jguard list --output-modules modules.txt libs/
-
-# Compile with strict validation
-jguard compile --strict --known-modules modules.txt -o policy.bin external-policy.jguard
+# Compile with strict validation (warnings become errors)
+jguardc --strict -o policy.bin external-policy.jguard
 ```
+
+This is useful in CI pipelines to catch redundant denies.
 
 ### Inspect Command
 
@@ -395,9 +399,9 @@ Denial:
 | Agent | `PolicyMerger.java` | Unknown module warning | ✅ Done |
 | Agent | `PolicyReloader.java` | Watch external directory (already supports it) | ✅ Done |
 | CLI | `InspectCommand.java` | Display denials | ✅ Done |
-| CLI | `CompileCommand.java` | `--strict` flag (optional, can defer) | 🔲 Deferred |
+| CLI | `JGuardc.java` | `--strict` flag | ✅ Done |
 | Tests | `PolicyMergerTest.java` | Test merge logic and warnings | ✅ Done |
-| Docs | Update READMEs, spec | Document new feature | 🔲 TODO |
+| Docs | Update READMEs, spec | Document new feature | ✅ Done |
 
 ---
 

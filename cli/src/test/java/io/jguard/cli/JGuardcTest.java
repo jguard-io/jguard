@@ -195,6 +195,77 @@ class JGuardcTest {
     assertThat(exitCode).isEqualTo(2); // picocli returns 2 for missing parameter
   }
 
+  // ===== Warning and strict mode =====
+
+  @Test
+  void warningOnRedundantDeny() throws IOException, URISyntaxException {
+    Path source = getResource("redundant-deny.jguard");
+    Path output = tempDir.resolve("policy.bin");
+
+    int exitCode = cmd.execute("-o", output.toString(), source.toString());
+
+    // Should succeed (exit 0) but produce warning
+    assertThat(exitCode).isZero();
+    assertThat(output).exists();
+    String errOutput = err.toString();
+    assertThat(errOutput).contains("warning:");
+    assertThat(errOutput).contains("Redundant deny");
+  }
+
+  @Test
+  void strictModeFailsOnWarning() throws IOException, URISyntaxException {
+    Path source = getResource("redundant-deny.jguard");
+    Path output = tempDir.resolve("policy.bin");
+
+    int exitCode = cmd.execute("--strict", "-o", output.toString(), source.toString());
+
+    // Should fail (exit 1) in strict mode
+    assertThat(exitCode).isEqualTo(1);
+    String errOutput = err.toString();
+    assertThat(errOutput).contains("warning:");
+    assertThat(errOutput).contains("Redundant deny");
+    assertThat(errOutput).contains("--strict mode");
+  }
+
+  @Test
+  void strictModeSucceedsWithNoWarnings() throws IOException, URISyntaxException {
+    Path source = getResource("valid-policy.jguard");
+    Path output = tempDir.resolve("policy.bin");
+
+    int exitCode = cmd.execute("--strict", "-o", output.toString(), source.toString());
+
+    // Should succeed with no warnings
+    assertThat(exitCode).isZero();
+    assertThat(output).exists();
+  }
+
+  @Test
+  void defensiveDenyNoWarning() throws IOException, URISyntaxException {
+    Path source = getResource("defensive-deny.jguard");
+    Path output = tempDir.resolve("policy.bin");
+
+    int exitCode = cmd.execute("-o", output.toString(), source.toString());
+
+    // Should succeed with no warnings
+    assertThat(exitCode).isZero();
+    assertThat(output).exists();
+    String errOutput = err.toString();
+    assertThat(errOutput).doesNotContain("warning:");
+    assertThat(errOutput).doesNotContain("Redundant deny");
+  }
+
+  @Test
+  void strictModeWithDefensiveDenySucceeds() throws IOException, URISyntaxException {
+    Path source = getResource("defensive-deny.jguard");
+    Path output = tempDir.resolve("policy.bin");
+
+    int exitCode = cmd.execute("--strict", "-o", output.toString(), source.toString());
+
+    // Should succeed even in strict mode (defensive deny suppresses warning)
+    assertThat(exitCode).isZero();
+    assertThat(output).exists();
+  }
+
   // ===== Determinism =====
 
   @Test
