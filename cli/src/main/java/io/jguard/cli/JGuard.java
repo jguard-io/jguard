@@ -27,7 +27,7 @@ import picocli.CommandLine.Command;
 @Command(
     name = "jguard",
     mixinStandardHelpOptions = true,
-    version = "jguard 0.2.0",
+    versionProvider = VersionProvider.JGuard.class,
     description = "jGuard policy inspection and validation tools",
     subcommands = {
       InspectCommand.class,

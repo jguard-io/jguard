@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `jguard list` - List all policies found in JARs on a path
 - `jguard diff` - Compare two policy files
 - `jguard validate-override` - Validate override policies
+- Build-time version injection via `io.jguard.Version` (IDE-agnostic)
 
 #### Policy Hot Reload
 - Zero-downtime policy updates via file watching

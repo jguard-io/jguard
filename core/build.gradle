@@ -9,3 +9,61 @@ dependencies {
   api(libs.slf4j.api)
 }
 
+// Generate Version.java with project version
+// Created during Gradle configuration for IDE support (works with all IDEs)
+def generatedSrcDir = layout.buildDirectory.dir("generated/sources/version/java/main")
+def versionDir = generatedSrcDir.get().dir("io/jguard").asFile
+def versionFile = new File(versionDir, "Version.java")
+
+def versionContent = """\
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The jGuard Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+package io.jguard;
+
+/** Auto-generated version information. Do not edit manually. */
+public final class Version {
+  /** The current jGuard version. */
+  public static final String VERSION = "${project.version}";
+
+  private Version() {}
+}
+"""
+
+// Generate during configuration so IDEs find the file after project import
+if (!versionFile.exists() || !versionFile.text.contains("\"${project.version}\"")) {
+  versionDir.mkdirs()
+  versionFile.text = versionContent
+}
+
+// Add generated sources to main source set
+sourceSets.main.java.srcDir(generatedSrcDir)
+
+// Register task for explicit invocation and proper incremental builds
+tasks.register("generateVersionClass") {
+  group = "build"
+  description = "Generates Version.java with the current project version"
+
+  inputs.property("version", project.version)
+  outputs.file(versionFile)
+
+  doLast {
+    versionDir.mkdirs()
+    versionFile.text = versionContent
+  }
+}
+
+// Ensure version is generated before compilation and source jar
+tasks.named("compileJava") {
+  dependsOn("generateVersionClass")
+}
+
+tasks.matching { it.name == "sourcesJar" }.configureEach {
+  dependsOn("generateVersionClass")
+}
+
+
