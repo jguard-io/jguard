@@ -274,21 +274,18 @@ This section is for release managers with write access to Maven Central and Grad
 
 ### One-Time Setup
 
-Set environment variables (do not commit these):
+Copy the release environment template and fill in your credentials:
 
 ```bash
-# GPG signing (get key from secure storage)
-export ORG_GRADLE_PROJECT_signingInMemoryKey="$(cat /path/to/jguard-release-key.asc)"
-export ORG_GRADLE_PROJECT_signingInMemoryKeyId="KEY_ID_LAST_8_CHARS"
-export ORG_GRADLE_PROJECT_signingInMemoryKeyPassword="key-passphrase"
+cp scripts/setup-release-env.template.sh ~/keys/jguard/setup-release-env.sh
+chmod 600 ~/keys/jguard/setup-release-env.sh
+# Edit the file and replace REPLACE_ME values with your credentials
+```
 
-# Maven Central (from https://central.sonatype.com/ → View Account → Generate User Token)
-export ORG_GRADLE_PROJECT_mavenCentralUsername="token-username"
-export ORG_GRADLE_PROJECT_mavenCentralPassword="token-password"
+Before each release, source the environment:
 
-# Gradle Plugin Portal (from https://plugins.gradle.org/ → API Keys)
-export GRADLE_PUBLISH_KEY="your-key"
-export GRADLE_PUBLISH_SECRET="your-secret"
+```bash
+source ~/keys/jguard/setup-release-env.sh
 ```
 
 ### Release Process
