@@ -138,6 +138,27 @@ Modules: 1
     - module -> threads.create
 ```
 
+**Inspect policy with denials:**
+```bash
+jguard inspect -v external-policy.bin
+```
+
+Output:
+```
+Policy: external-policy.bin
+
+Format version: 2
+Modules: 1
+
+  Module: com.example.app
+  Entitlements: 2
+    - module -> fs.read("/data", "**")
+    - com.example.app.http.. -> network.outbound
+  Denials: 2
+    - module -> native.load (defensive)
+    - com.example.app.. -> threads.create
+```
+
 **Inspect a standalone policy file:**
 ```bash
 jguard inspect policy.bin

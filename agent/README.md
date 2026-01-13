@@ -348,50 +348,110 @@ java -javaagent:jguard-agent.jar \
 
 Each module can only use its own entitlements. Module A cannot use Module B's entitlements, even if they're in the same application.
 
-## Policy Overrides
+## External Policies (Grant/Deny)
 
-Operations teams can restrict embedded policies at deployment time using override files. Overrides can only **remove** capabilities—they cannot grant new ones.
+External policies allow administrators to modify entitlements at deployment time without rebuilding applications. External policies can both **grant** and **deny** capabilities.
 
 ### Configuration
 
 ```bash
 java -javaagent:jguard-agent.jar \
-     -Djguard.policy.override=/etc/myapp/overrides \
+     -Djguard.policy.override=/etc/myapp/policies \
      -jar myapp.jar
 ```
 
-### Override Directory Structure
+### External Policy Directory Structure
 
 ```
-/etc/myapp/overrides/
-├── _global.bin           # Applies to ALL modules
-├── com.example.core.bin  # Overrides for com.example.core
-└── com.example.net.bin   # Overrides for com.example.net
+/etc/myapp/policies/
+├── _global.bin                 # Applies to ALL modules
+├── com.example.core.bin        # Policy for com.example.core module
+├── com.example.net.bin         # Policy for com.example.net module
+└── org.locationtech.proj4j.bin # Policy for non-JPMS library (by package prefix)
+```
+
+### Grant/Deny Syntax
+
+```text
+security module com.example.app {
+    // Grant: adds to effective permissions (union)
+    entitle com.example.app.reports.. to fs.write("/var/reports", "**");
+
+    // Deny: removes from effective permissions (set difference)
+    deny com.example.app.. to network.outbound;
+
+    // Deny (defensive): suppress warning if capability not already granted
+    deny(defensive) com.example.app.. to native.load;
+}
 ```
 
 ### Merge Behavior
 
-Effective entitlements = embedded ∩ override (intersection)
+```
+effective = (embedded ∪ external_grants ∪ global_grants) - (external_denials ∪ global_denials)
+```
 
-| Embedded | Override | Effective |
-|----------|----------|-----------|
-| fs.read, network.outbound | fs.read | fs.read only |
-| fs.read | fs.read, threads.create | fs.read only (new caps ignored) |
-| fs.read, network.outbound | (no override) | fs.read, network.outbound |
+| Scenario | Result |
+|----------|--------|
+| External grants new capability | Added to effective permissions |
+| External denies existing capability | Removed from effective permissions |
+| External grants AND denies same capability | Denial wins |
+| No external policy for module | Embedded policy applies unchanged |
+
+### Use Cases
+
+| Scenario | Solution |
+|----------|----------|
+| Non-JPMS library needs permissions | External policy grants capabilities |
+| JPMS library without jGuard | External policy grants capabilities |
+| Upstream library is overly permissive | External policy denies capabilities |
+| Developer forgot a permission | External policy adds missing grant |
+| Airgapped environment | Global policy denies network access |
+
+### Example: Airgapped Environment
+
+```text
+// /etc/myapp/policies/_global.bin
+security module _global {
+    deny module to network.outbound;
+    deny module to network.listen;
+    deny(defensive) module to native.load;
+}
+```
+
+### Example: Restrict Overly Permissive Library
+
+```text
+// /etc/myapp/policies/com.overly.permissive.bin
+security module com.overly.permissive {
+    // Library grants network.outbound to entire module - we restrict it
+    deny module to network.outbound;
+    entitle com.overly.permissive.http.. to network.outbound;
+}
+```
+
+### Warning Messages
+
+**Redundant deny warning:**
+```
+[WARN] [jguard] Redundant deny: com.example.foo.. -> threads.create (not in granted set)
+```
+Suppress with `deny(defensive)` for intentional defensive denials.
+
+**Unknown module warning:**
+```
+[WARN] [jguard] External policy 'com.example.typo' does not match any loaded module
+```
+This helps catch typos in policy filenames.
 
 ### Hot Reload
 
-Override files are included in hot reload. Update an override file and changes take effect within the reload interval.
+External policy files are included in hot reload. Update a policy file and changes take effect within the reload interval. This enables zero-downtime policy updates:
 
-### Validating Overrides
-
-Use the CLI to validate overrides before deployment:
-
-```bash
-jguard validate-override --jar mymodule.jar --override override.bin
-```
-
-This catches misconfigurations where an override attempts to grant capabilities not in the embedded policy.
+- Adding forgotten grants
+- Adding new denials
+- Modifying existing policies
+- Adding policies for new modules
 
 ## Production Deployment
 

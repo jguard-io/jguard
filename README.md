@@ -287,6 +287,93 @@ See [agent/README.md](agent/README.md) for full agent documentation and [gradle-
 
 ---
 
+## External Policies with Grant/Deny
+
+External policies allow administrators to modify entitlements at deployment time without rebuilding applications. External policies support both **granting** and **denying** capabilities.
+
+### Use Cases
+
+| Scenario | Solution |
+|----------|----------|
+| Non-JPMS library needs permissions | External policy grants capabilities |
+| Upstream library is overly permissive | External policy denies capabilities |
+| Dev forgot a permission | External policy adds missing grant |
+| Airgapped environment | Global policy denies all network access |
+
+### Deny Syntax
+
+```text
+security module com.example.app {
+    // Grant: adds to effective permissions
+    entitle com.example.app.reports.. to fs.write("/var/reports", "**");
+
+    // Deny: removes from effective permissions
+    deny com.example.app.. to network.outbound;
+
+    // Deny (defensive): suppress warning if capability not already granted
+    deny(defensive) com.example.app.. to native.load;
+}
+```
+
+### External Policy Directory
+
+```bash
+java -javaagent:jguard-agent.jar \
+     -Djguard.policy.override=/etc/myapp/policies \
+     -Djguard.reload=true \
+     -jar myapp.jar
+```
+
+Directory structure:
+```
+/etc/myapp/policies/
+├── _global.bin                 # Applies to ALL modules
+├── com.example.app.bin         # Policy for com.example.app
+└── org.locationtech.proj4j.bin # Policy for non-JPMS library
+```
+
+### Merge Logic
+
+External policies merge with embedded policies using this formula:
+
+```
+effective = (embedded ∪ external_grants ∪ global_grants) - (external_denials ∪ global_denials)
+```
+
+- **Grants** are combined (union)
+- **Denials** remove from effective permissions (set difference)
+- **Denials always win** over grants
+
+### Example: Restricting an Overly Permissive Library
+
+```text
+// /etc/myapp/policies/com.overly.permissive.bin
+security module com.overly.permissive {
+    // Library's embedded policy grants network.outbound to entire module
+    // We restrict it to only specific packages
+    deny module to network.outbound;
+    entitle com.overly.permissive.http.. to network.outbound;
+}
+```
+
+### Example: Airgapped Environment
+
+```text
+// /etc/myapp/policies/_global.bin
+security module _global {
+    // No network access for any module
+    deny module to network.outbound;
+    deny module to network.listen;
+
+    // No native code
+    deny(defensive) module to native.load;
+}
+```
+
+See [docs/roadmap/EXTERNAL_POLICY_GRANT_DENY.md](docs/roadmap/EXTERNAL_POLICY_GRANT_DENY.md) for full documentation.
+
+---
+
 ## Multi-Module Support
 
 jGuard supports JPMS multi-module applications where each module has its own security policy. **No configuration needed** — the agent automatically discovers policies from signed JARs.
