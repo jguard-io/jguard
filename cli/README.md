@@ -2,41 +2,39 @@
 
 Command-line tools for working with jGuard policy descriptors.
 
+## Overview
+
+jGuard provides two CLI tools:
+
+| Tool | Purpose |
+|------|---------|
+| `jguardc` | **Compiler** - Compiles `.jguard` source files to binary format |
+| `jguard` | **Inspector** - Inspects, lists, diffs, and validates policies |
+
+This separation follows Unix conventions: the compiler (`jguardc`) is a standalone tool for build pipelines, while the inspector (`jguard`) provides read-only operations for policy analysis.
+
 ## Installation
 
-Build and install the distribution:
+Build and install the distributions:
 
 ```bash
 ./gradlew :cli:installDist
 ```
 
-The `jguard` binary will be available at:
+Both binaries will be available at:
 ```
 cli/build/install/jguard/bin/jguard
+cli/build/install/jguardc/bin/jguardc
 ```
 
-## Commands
-
-The `jguard` CLI provides several subcommands for policy management:
-
-| Command | Description |
-|---------|-------------|
-| `compile` | Compile a `.jguard` source file to binary format |
-| `inspect` | Inspect embedded policy in a JAR or policy file |
-| `list` | List all policies found in JARs on a path |
-| `diff` | Compare two policy files and show differences |
-| `validate-override` | Validate that an override is a subset of embedded policy |
-
----
-
-## jguard compile
+## jguardc (Compiler)
 
 Compiles `module-info.jguard` policy descriptors into binary format for runtime enforcement.
 
 ### Usage
 
 ```bash
-jguard compile [OPTIONS] <source>
+jguardc [OPTIONS] <source>
 ```
 
 ### Arguments
@@ -53,23 +51,37 @@ jguard compile [OPTIONS] <source>
 | `--json <path>` | Also output JSON format to the specified path |
 | `-v, --verbose` | Enable verbose output |
 | `-h, --help` | Show help message and exit |
+| `-V, --version` | Print version info and exit |
 
 ### Examples
 
 **Basic compilation:**
 ```bash
-jguard compile -o build/policy.bin src/main/java/module-info.jguard
+jguardc -o build/policy.bin src/main/java/module-info.jguard
 ```
 
 **With JSON output for debugging:**
 ```bash
-jguard compile -o build/policy.bin --json build/policy.json src/main/java/module-info.jguard
+jguardc -o build/policy.bin --json build/policy.json src/main/java/module-info.jguard
 ```
 
 **Verbose mode:**
 ```bash
-jguard compile -v -o build/policy.bin src/main/java/module-info.jguard
+jguardc -v -o build/policy.bin src/main/java/module-info.jguard
 ```
+
+---
+
+## jguard (Inspector)
+
+The `jguard` CLI provides subcommands for policy inspection and validation:
+
+| Command | Description |
+|---------|-------------|
+| `inspect` | Inspect embedded policy in a JAR or policy file |
+| `list` | List all policies found in JARs on a path |
+| `diff` | Compare two policy files and show differences |
+| `validate-override` | Validate that an override is a subset of embedded policy |
 
 ---
 
@@ -447,9 +459,8 @@ Use `exec-maven-plugin`:
             <goals><goal>exec</goal></goals>
             <phase>compile</phase>
             <configuration>
-                <executable>jguard</executable>
+                <executable>jguardc</executable>
                 <arguments>
-                    <argument>compile</argument>
                     <argument>-o</argument>
                     <argument>${project.build.outputDirectory}/policy.bin</argument>
                     <argument>src/main/java/module-info.jguard</argument>
@@ -463,7 +474,7 @@ Use `exec-maven-plugin`:
 ### Make / Shell Scripts
 
 ```bash
-jguard compile -o target/policy.bin src/main/java/module-info.jguard
+jguardc -o target/policy.bin src/main/java/module-info.jguard
 ```
 
 ---
