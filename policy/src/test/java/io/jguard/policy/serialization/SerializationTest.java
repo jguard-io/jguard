@@ -266,7 +266,7 @@ class SerializationTest {
       String json = JsonPolicyWriter.toJson(policy);
       JsonNode root = JSON_MAPPER.readTree(json);
 
-      assertThat(root.get("formatVersion").asInt()).isEqualTo(1);
+      assertThat(root.get("formatVersion").asInt()).isEqualTo(2);
     }
 
     @Test

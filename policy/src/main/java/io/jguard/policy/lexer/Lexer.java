@@ -23,6 +23,8 @@ public final class Lexer {
           "security", TokenType.SECURITY,
           "module", TokenType.MODULE,
           "entitle", TokenType.ENTITLE,
+          "deny", TokenType.DENY,
+          "defensive", TokenType.DEFENSIVE,
           "to", TokenType.TO);
 
   private final String source;

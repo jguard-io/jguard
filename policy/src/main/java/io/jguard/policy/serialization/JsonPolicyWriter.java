@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import io.jguard.policy.model.CapabilityArgument;
 import io.jguard.policy.model.CapabilityGrant;
+import io.jguard.policy.model.Denial;
 import io.jguard.policy.model.Entitlement;
 import io.jguard.policy.model.PolicyDescriptor;
 import io.jguard.policy.model.SubjectPattern;
@@ -98,6 +99,12 @@ public final class JsonPolicyWriter {
     }
     gen.writeEndArray();
 
+    gen.writeArrayFieldStart("denials");
+    for (Denial denial : policy.denials()) {
+      writeDenial(gen, denial);
+    }
+    gen.writeEndArray();
+
     gen.writeEndObject();
   }
 
@@ -106,6 +113,14 @@ public final class JsonPolicyWriter {
     gen.writeStartObject();
     writeSubject(gen, entitlement.subject());
     writeCapability(gen, entitlement.capability());
+    gen.writeEndObject();
+  }
+
+  private static void writeDenial(JsonGenerator gen, Denial denial) throws IOException {
+    gen.writeStartObject();
+    writeSubject(gen, denial.subject());
+    writeCapability(gen, denial.capability());
+    gen.writeBooleanField("defensive", denial.defensive());
     gen.writeEndObject();
   }
 

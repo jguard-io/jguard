@@ -10,6 +10,7 @@ package io.jguard.policy.serialization;
 import io.jguard.policy.model.ApplicationPolicy;
 import io.jguard.policy.model.CapabilityArgument;
 import io.jguard.policy.model.CapabilityGrant;
+import io.jguard.policy.model.Denial;
 import io.jguard.policy.model.Entitlement;
 import io.jguard.policy.model.ModulePolicy;
 import io.jguard.policy.model.PolicyDescriptor;
@@ -127,7 +128,8 @@ public final class BinaryPolicyReader {
   private static ModulePolicy readModule(DataInputStream dis) throws IOException {
     String moduleName = readString(dis);
     List<Entitlement> entitlements = readEntitlements(dis);
-    return new ModulePolicy(moduleName, entitlements);
+    List<Denial> denials = readDenials(dis);
+    return new ModulePolicy(moduleName, entitlements, denials);
   }
 
   private static List<Entitlement> readEntitlements(DataInputStream dis) throws IOException {
@@ -137,6 +139,15 @@ public final class BinaryPolicyReader {
       entitlements.add(readEntitlement(dis));
     }
     return entitlements;
+  }
+
+  private static List<Denial> readDenials(DataInputStream dis) throws IOException {
+    int denialCount = dis.readUnsignedShort();
+    List<Denial> denials = new ArrayList<>(denialCount);
+    for (int i = 0; i < denialCount; i++) {
+      denials.add(readDenial(dis));
+    }
+    return denials;
   }
 
   // ========== PolicyDescriptor (V1 Legacy) ==========
@@ -252,6 +263,46 @@ public final class BinaryPolicyReader {
     CapabilityGrant capability = new CapabilityGrant(capabilityName, arguments);
 
     return new Entitlement(subject, capability);
+  }
+
+  private static Denial readDenial(DataInputStream dis) throws IOException {
+    // Read subject type
+    byte subjectTypeByte = dis.readByte();
+    SubjectPattern.Type subjectType =
+        switch (subjectTypeByte) {
+          case SUBJECT_MODULE -> SubjectPattern.Type.MODULE;
+          case SUBJECT_EXACT -> SubjectPattern.Type.PACKAGE_EXACT;
+          case SUBJECT_DIRECT_CHILDREN -> SubjectPattern.Type.PACKAGE_DIRECT_CHILDREN;
+          case SUBJECT_RECURSIVE -> SubjectPattern.Type.PACKAGE_RECURSIVE;
+          default -> throw new IOException("Unknown subject type: " + subjectTypeByte);
+        };
+
+    // Read package name (if not module)
+    String packageName = null;
+    if (subjectType != SubjectPattern.Type.MODULE) {
+      packageName = readString(dis);
+    }
+
+    SubjectPattern subject = new SubjectPattern(subjectType, packageName);
+
+    // Read capability name
+    String capabilityName = readString(dis);
+
+    // Read arguments
+    int argCount = dis.readUnsignedByte();
+    List<CapabilityArgument> arguments = new ArrayList<>(argCount);
+
+    for (int i = 0; i < argCount; i++) {
+      arguments.add(readArgument(dis));
+    }
+
+    CapabilityGrant capability = new CapabilityGrant(capabilityName, arguments);
+
+    // Read defensive flag
+    byte defensiveByte = dis.readByte();
+    boolean defensive = (defensiveByte != 0);
+
+    return new Denial(subject, capability, defensive);
   }
 
   private static CapabilityArgument readArgument(DataInputStream dis) throws IOException {

@@ -10,6 +10,7 @@ package io.jguard.policy.serialization;
 import io.jguard.policy.model.ApplicationPolicy;
 import io.jguard.policy.model.CapabilityArgument;
 import io.jguard.policy.model.CapabilityGrant;
+import io.jguard.policy.model.Denial;
 import io.jguard.policy.model.Entitlement;
 import io.jguard.policy.model.ModulePolicy;
 import io.jguard.policy.model.PolicyDescriptor;
@@ -66,6 +67,9 @@ public final class BinaryPolicyWriter {
 
   private static final byte ARG_STRING = 0;
   private static final byte ARG_INTEGER = 1;
+
+  private static final byte DEFENSIVE_FALSE = 0;
+  private static final byte DEFENSIVE_TRUE = 1;
 
   private BinaryPolicyWriter() {
     // Static utility class
@@ -146,6 +150,17 @@ public final class BinaryPolicyWriter {
 
     for (Entitlement entitlement : module.entitlements()) {
       writeEntitlement(dos, entitlement);
+    }
+
+    // Denials
+    if (module.denials().size() > 65535) {
+      throw new IOException(
+          "Too many denials in module " + module.moduleName() + ": " + module.denials().size());
+    }
+    dos.writeShort(module.denials().size());
+
+    for (Denial denial : module.denials()) {
+      writeDenial(dos, denial);
     }
   }
 
@@ -234,6 +249,42 @@ public final class BinaryPolicyWriter {
     for (CapabilityArgument arg : capability.arguments()) {
       writeArgument(dos, arg);
     }
+  }
+
+  private static void writeDenial(DataOutputStream dos, Denial denial) throws IOException {
+    SubjectPattern subject = denial.subject();
+
+    // Subject type
+    byte subjectType =
+        switch (subject.type()) {
+          case MODULE -> SUBJECT_MODULE;
+          case PACKAGE_EXACT -> SUBJECT_EXACT;
+          case PACKAGE_DIRECT_CHILDREN -> SUBJECT_DIRECT_CHILDREN;
+          case PACKAGE_RECURSIVE -> SUBJECT_RECURSIVE;
+        };
+    dos.writeByte(subjectType);
+
+    // Package name (if not module)
+    if (subject.type() != SubjectPattern.Type.MODULE) {
+      writeString(dos, subject.packageName());
+    }
+
+    // Capability
+    CapabilityGrant capability = denial.capability();
+    writeString(dos, capability.name());
+
+    // Arguments
+    if (capability.arguments().size() > 255) {
+      throw new IOException("Too many arguments: " + capability.arguments().size());
+    }
+    dos.writeByte(capability.arguments().size());
+
+    for (CapabilityArgument arg : capability.arguments()) {
+      writeArgument(dos, arg);
+    }
+
+    // Defensive flag
+    dos.writeByte(denial.defensive() ? DEFENSIVE_TRUE : DEFENSIVE_FALSE);
   }
 
   private static void writeArgument(DataOutputStream dos, CapabilityArgument arg)

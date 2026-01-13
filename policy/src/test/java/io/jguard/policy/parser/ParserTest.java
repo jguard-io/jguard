@@ -11,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.jguard.policy.ast.Argument;
 import io.jguard.policy.ast.Capability;
+import io.jguard.policy.ast.DenyDeclaration;
 import io.jguard.policy.ast.EntitlementDeclaration;
 import io.jguard.policy.ast.PackagePattern;
 import io.jguard.policy.ast.PolicyFile;
@@ -342,6 +343,87 @@ class ParserTest {
     Parser.ParseError error = result.errors().get(0);
     assertThat(error.line()).isEqualTo(2);
     assertThat(error.sourcePath()).isEqualTo("test.jguard");
+  }
+
+  // ===== Deny Declarations =====
+
+  @Test
+  void parsesDenyStatement() {
+    PolicyFile ast = parse("security module app { deny module to network.outbound; }");
+    assertThat(ast.denials()).hasSize(1);
+
+    DenyDeclaration denial = ast.denials().get(0);
+    assertThat(denial.subject()).isInstanceOf(Subject.Module.class);
+    assertThat(denial.capability().name()).isEqualTo("network.outbound");
+    assertThat(denial.defensive()).isFalse();
+  }
+
+  @Test
+  void parsesDenyDefensiveStatement() {
+    PolicyFile ast = parse("security module app { deny(defensive) module to native.load; }");
+    assertThat(ast.denials()).hasSize(1);
+
+    DenyDeclaration denial = ast.denials().get(0);
+    assertThat(denial.subject()).isInstanceOf(Subject.Module.class);
+    assertThat(denial.capability().name()).isEqualTo("native.load");
+    assertThat(denial.defensive()).isTrue();
+  }
+
+  @Test
+  void parsesDenyWithPackageSubject() {
+    PolicyFile ast = parse("security module app { deny com.example.app.. to threads.create; }");
+    assertThat(ast.denials()).hasSize(1);
+
+    DenyDeclaration denial = ast.denials().get(0);
+    Subject.Package pkg = (Subject.Package) denial.subject();
+    assertThat(pkg.pattern().packageName()).isEqualTo("com.example.app");
+    assertThat(pkg.pattern().matchType()).isEqualTo(PackagePattern.MatchType.RECURSIVE);
+  }
+
+  @Test
+  void parsesDenyWithCapabilityArguments() {
+    PolicyFile ast = parse("security module app { deny module to fs.write(\"/tmp\", \"*.log\"); }");
+    assertThat(ast.denials()).hasSize(1);
+
+    DenyDeclaration denial = ast.denials().get(0);
+    assertThat(denial.capability().name()).isEqualTo("fs.write");
+    assertThat(denial.capability().arguments()).hasSize(2);
+  }
+
+  @Test
+  void parsesMixedEntitlementsAndDenials() {
+    String source =
+        """
+        security module app {
+            entitle module to fs.read("/data", "*.json");
+            deny module to network.outbound;
+            entitle com.example.net to network.outbound;
+            deny(defensive) module to native.load;
+        }
+        """;
+
+    PolicyFile ast = parse(source);
+    assertThat(ast.entitlements()).hasSize(2);
+    assertThat(ast.denials()).hasSize(2);
+
+    // Verify denials
+    assertThat(ast.denials().get(0).defensive()).isFalse();
+    assertThat(ast.denials().get(1).defensive()).isTrue();
+  }
+
+  @Test
+  void reportsErrorForIncompleteDenyDefensive() {
+    Parser.ParseResult result = parseWithErrors("security module app { deny( module to foo; }");
+    assertThat(result.hasErrors()).isTrue();
+    assertThat(result.errors().get(0).message()).contains("Expected 'defensive'");
+  }
+
+  @Test
+  void reportsErrorForMissingRightParenInDenyDefensive() {
+    Parser.ParseResult result =
+        parseWithErrors("security module app { deny(defensive module to foo; }");
+    assertThat(result.hasErrors()).isTrue();
+    assertThat(result.errors().get(0).message()).contains("Expected ')'");
   }
 
   // ===== Helper Methods =====

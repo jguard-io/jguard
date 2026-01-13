@@ -17,21 +17,39 @@ import java.util.Objects;
  *
  * @param moduleName the module name segments (e.g., ["org", "jguard", "samples"])
  * @param entitlements the entitlement declarations
+ * @param denials the deny declarations
  * @param location the source location of the 'security' keyword
  */
 public record PolicyFile(
-    List<String> moduleName, List<EntitlementDeclaration> entitlements, SourceLocation location) {
+    List<String> moduleName,
+    List<EntitlementDeclaration> entitlements,
+    List<DenyDeclaration> denials,
+    SourceLocation location) {
 
   /** Compact constructor that validates and normalizes the record fields. */
   public PolicyFile {
     Objects.requireNonNull(moduleName, "moduleName");
     Objects.requireNonNull(entitlements, "entitlements");
+    Objects.requireNonNull(denials, "denials");
     Objects.requireNonNull(location, "location");
     moduleName = List.copyOf(moduleName);
     entitlements = List.copyOf(entitlements);
+    denials = List.copyOf(denials);
     if (moduleName.isEmpty()) {
       throw new IllegalArgumentException("Module name must have at least one segment");
     }
+  }
+
+  /**
+   * Backwards-compatible constructor for policy files without denials.
+   *
+   * @param moduleName the module name segments
+   * @param entitlements the entitlement declarations
+   * @param location the source location
+   */
+  public PolicyFile(
+      List<String> moduleName, List<EntitlementDeclaration> entitlements, SourceLocation location) {
+    this(moduleName, entitlements, List.of(), location);
   }
 
   /**
@@ -49,6 +67,9 @@ public record PolicyFile(
     sb.append("security module ").append(moduleNameString()).append(" {\n");
     for (EntitlementDeclaration e : entitlements) {
       sb.append("    ").append(e).append("\n");
+    }
+    for (DenyDeclaration d : denials) {
+      sb.append("    ").append(d).append("\n");
     }
     sb.append("}");
     return sb.toString();
