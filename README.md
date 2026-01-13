@@ -255,7 +255,7 @@ For production, use an external policy file so administrators can update entitle
 
 ```bash
 # Compile policy separately
-jguard compile -o /etc/myapp/policy.bin module-info.jguard
+jguardc -o /etc/myapp/policy.bin module-info.jguard
 
 # Run with external policy
 java -javaagent:jguard-agent.jar=/etc/myapp/policy.bin \
@@ -279,7 +279,7 @@ When enabled, the agent polls the policy file for changes. Update the policy and
 
 ```bash
 # Update policy - no restart needed!
-jguard compile -o /etc/myapp/policy.bin updated-policy.jguard
+jguardc -o /etc/myapp/policy.bin updated-policy.jguard
 # Changes detected and applied within 5 seconds
 ```
 
@@ -374,6 +374,58 @@ See [docs/roadmap/EXTERNAL_POLICY_GRANT_DENY.md](docs/roadmap/EXTERNAL_POLICY_GR
 
 ---
 
+## Legacy Library Support
+
+jGuard supports restricting third-party libraries that were **not** built with jGuard awareness. This is essential for applying least-privilege to dependencies from Maven Central or other repositories.
+
+### How It Works
+
+1. **External policy file**: Create a `.jguard` file named after the library's module name
+2. **Grant specific capabilities**: Only grant what the library actually needs
+3. **Deny by default**: Any capability not granted is blocked
+
+### Example: Restricting a Third-Party Library
+
+For a library published as `legacy-library.jar` (automatic module name: `legacy.library`):
+
+```text
+// policies-src/legacy.library.jguard
+security module legacy.library {
+    // Only allow specific capabilities
+    entitle module to fs.read("/data", "**");
+    entitle module to system.property.read("java.version");
+
+    // Everything else is denied by default:
+    // - No network access
+    // - No thread creation
+    // - No native code
+}
+```
+
+### Automatic Module Detection
+
+For libraries without `module-info.java`, Java derives the module name from the JAR filename:
+- `legacy-library-1.0.jar` → module name: `legacy.library`
+- `my.awesome.lib-2.0.jar` → module name: `my.awesome.lib`
+
+jGuard's MODULE pattern correctly matches all packages within automatic modules, regardless of package naming conventions.
+
+### Production Workflow
+
+```bash
+# 1. Compile external policies
+jguardc -o /etc/myapp/policies/legacy.library.bin policies-src/legacy.library.jguard
+
+# 2. Run with external policy directory
+java -javaagent:jguard-agent.jar \
+     -Djguard.policy.override=/etc/myapp/policies \
+     -jar myapp.jar
+```
+
+See [samples/sandbox-legacy-library](samples/sandbox-legacy-library) for a complete working example.
+
+---
+
 ## Multi-Module Support
 
 jGuard supports JPMS multi-module applications where each module has its own security policy. **No configuration needed** — the agent automatically discovers policies from signed JARs.
@@ -438,7 +490,7 @@ Completed:
 
 * Stable policy model with deterministic compilation
 * Comprehensive filesystem enforcement (`fs.read`, `fs.write`)
-* Network enforcement (`network.outbound`, `network.listen`)
+* Network enforcement with host/port filtering (`network.outbound`, `network.listen`)
 * Thread creation enforcement (`threads.create`)
 * Native library loading enforcement (`native.load`)
 * Environment variable access enforcement (`env.read`)
@@ -448,6 +500,9 @@ Completed:
 * Strong JPMS integration with module verification
 * Single dispatch architecture for efficient capability checking
 * **Multi-module support** with per-module policies and signed JAR verification
+* **External policies** with grant/deny semantics for deployment-time customization
+* **Legacy library support** for restricting third-party dependencies without jGuard policies
+* **CLI tools** (`jguardc` compiler, `jguard` inspector) for policy management
 
 ---
 

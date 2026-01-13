@@ -107,6 +107,18 @@ jguardPolicy {
     // Allow unsigned JARs during development (default: false)
     // WARNING: Never enable in production!
     allowUnsignedPolicies = false
+
+    // Enable policy hot reload (default: false)
+    hotReload = false
+
+    // Hot reload poll interval in seconds (default: 5)
+    hotReloadInterval = 5
+
+    // External policies source directory (for grant/deny at deployment time)
+    externalPoliciesSourceDir = file("policies-src")
+
+    // External policies output directory (compiled .bin files)
+    externalPoliciesOutputDir = file("policies")
 }
 ```
 
@@ -153,6 +165,61 @@ Override the mode at runtime:
 |----------|-------------|
 | `-Pjguard.mode=<mode>` | Override enforcement mode (strict, permissive, audit) |
 | `-Pjguard.skip=true` | Disable agent entirely |
+
+## External Policies
+
+External policies allow modifying entitlements at deployment time using grant/deny semantics.
+
+### Configuration
+
+```groovy
+jguardPolicy {
+    // Source directory for .jguard files
+    externalPoliciesSourceDir = file("policies-src")
+
+    // Output directory for compiled .bin files
+    externalPoliciesOutputDir = file("policies")
+
+    // Allow external policies without signed JARs (dev only!)
+    allowUnsignedPolicies = true
+}
+```
+
+### Tasks
+
+The plugin provides a `compileExternalPolicies` task:
+
+```bash
+./gradlew compileExternalPolicies
+```
+
+This compiles all `.jguard` files in the source directory to `.bin` files in the output directory.
+
+### Directory Structure
+
+```
+my-app/
+├── policies-src/              # Source .jguard files
+│   ├── legacy.library.jguard  # Policy for third-party library
+│   └── _global.jguard         # Global policy for all modules
+├── policies/                  # Compiled .bin files (output)
+│   ├── legacy.library.bin
+│   └── _global.bin
+└── build.gradle
+```
+
+## Hot Reload
+
+Enable hot reload to update policies without restarting the application:
+
+```groovy
+jguardPolicy {
+    hotReload = true
+    hotReloadInterval = 5  // Poll every 5 seconds
+}
+```
+
+When running with `./gradlew runWithAgent`, the agent will automatically detect policy file changes and reload them.
 
 ## JAR Packaging
 

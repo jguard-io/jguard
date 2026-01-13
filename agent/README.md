@@ -43,13 +43,13 @@ For production deployments, keep policy files external to the application JAR. T
 
 ```bash
 # 1. Compile policy separately
-jguard compile -o /etc/myapp/policy.bin src/main/java/module-info.jguard
+jguardc -o /etc/myapp/policy.bin src/main/java/module-info.jguard
 
 # 2. Run application with external policy
 java -javaagent:jguard-agent.jar=/etc/myapp/policy.bin -jar myapp.jar
 
 # 3. Update entitlements (requires restart, no rebuild)
-jguard compile -o /etc/myapp/policy.bin updated-policy.jguard
+jguardc -o /etc/myapp/policy.bin updated-policy.jguard
 systemctl restart myapp
 ```
 
