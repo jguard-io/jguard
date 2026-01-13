@@ -16,9 +16,12 @@ import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.file.Directory;
 import org.gradle.api.plugins.ApplicationPlugin;
 import org.gradle.api.plugins.JavaPlugin;
+import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.JavaExec;
+import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.TaskProvider;
+import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.jvm.tasks.Jar;
 
 /**
@@ -39,6 +42,7 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
 
   public static final String EXTENSION_NAME = "jguardPolicy";
   public static final String TASK_NAME = "compileJGuardPolicy";
+  public static final String EXTERNAL_POLICIES_TASK_NAME = "compileExternalPolicies";
   public static final String AGENT_CONFIGURATION_NAME = "jguardAgent";
   public static final String RUN_WITH_AGENT_TASK_NAME = "runWithAgent";
 
@@ -85,6 +89,33 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                                           : project.provider(() -> null)));
                 });
 
+    // Register the external policies compile task (only if source dir is configured)
+    project
+        .getTasks()
+        .register(
+            EXTERNAL_POLICIES_TASK_NAME,
+            CompileExternalPoliciesTask.class,
+            task -> {
+              task.setDescription(
+                  "Compiles external policy .jguard files from the configured directory");
+              task.setGroup("jguard");
+
+              // Wire inputs from extension
+              task.getSourceDir().set(extension.getExternalPoliciesSourceDir());
+              task.getOutputDir().set(extension.getExternalPoliciesOutputDir());
+              task.getIncludeJson().set(extension.getExternalPoliciesIncludeJson());
+
+              // Only enable task if source dir is configured
+              task.onlyIf(
+                  t -> {
+                    if (!extension.getExternalPoliciesSourceDir().isPresent()) {
+                      return false;
+                    }
+                    File sourceDir = extension.getExternalPoliciesSourceDir().get().getAsFile();
+                    return sourceDir.exists() && sourceDir.isDirectory();
+                  });
+            });
+
     // Integrate with jar task if Java plugin is applied
     project
         .getPlugins()
@@ -110,6 +141,48 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                                 }),
                             spec -> {
                               spec.into(extension.getJarPath());
+                            });
+                      });
+
+              // Configure module path inference for all Java compilation and execution tasks.
+              // This ensures non-modular dependencies (legacy JARs without module-info.java)
+              // are placed on the module path and become "automatic modules" that jGuard
+              // can identify and enforce policies on.
+              project
+                  .getTasks()
+                  .withType(
+                      JavaCompile.class,
+                      task -> {
+                        task.getModularity().getInferModulePath().set(true);
+                        // For automatic modules without Automatic-Module-Name manifest attribute,
+                        // Gradle's inferModulePath doesn't work. Force module path explicitly.
+                        task.doFirst(
+                            t -> {
+                              JavaCompile jc = (JavaCompile) t;
+                              String cp = jc.getClasspath().getAsPath();
+                              if (!cp.isEmpty()) {
+                                jc.getOptions().getCompilerArgs().add("--module-path");
+                                jc.getOptions().getCompilerArgs().add(cp);
+                                jc.setClasspath(project.files());
+                              }
+                            });
+                      });
+              project
+                  .getTasks()
+                  .withType(
+                      JavaExec.class,
+                      task -> {
+                        task.getModularity().getInferModulePath().set(true);
+                        // For automatic modules without Automatic-Module-Name manifest attribute,
+                        // Gradle's inferModulePath doesn't work. Force module path explicitly.
+                        task.doFirst(
+                            t -> {
+                              JavaExec je = (JavaExec) t;
+                              String cp = je.getClasspath().getAsPath();
+                              if (!cp.isEmpty() && je.getMainModule().isPresent()) {
+                                je.jvmArgs("--module-path", cp, "-m", je.getMainModule().get());
+                                je.setClasspath(project.files());
+                              }
                             });
                       });
             });
@@ -145,6 +218,10 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
     TaskProvider<JavaExec> runTaskProvider =
         project.getTasks().named(ApplicationPlugin.TASK_RUN_NAME, JavaExec.class);
 
+    // Get external policies task provider lazily
+    TaskProvider<CompileExternalPoliciesTask> externalPoliciesTask =
+        project.getTasks().named(EXTERNAL_POLICIES_TASK_NAME, CompileExternalPoliciesTask.class);
+
     project
         .getTasks()
         .register(
@@ -155,12 +232,46 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
               task.setGroup("application");
               task.dependsOn(compileTask);
 
-              // Wire main class and module from the run task using providers (lazy)
-              task.getMainClass().set(runTaskProvider.flatMap(JavaExec::getMainClass));
-              task.getMainModule().set(runTaskProvider.flatMap(JavaExec::getMainModule));
+              // Also depend on external policies task if source dir is configured
+              task.dependsOn(externalPoliciesTask);
 
-              // Classpath must be set after evaluation
-              task.setClasspath(project.files(runTaskProvider.map(JavaExec::getClasspath)));
+              // Wire main class from the run task using providers (lazy)
+              task.getMainClass().set(runTaskProvider.flatMap(JavaExec::getMainClass));
+
+              // Auto-detect mainModule from module-info.java if not explicitly set.
+              // This enables modular execution so jGuard can properly identify
+              // automatic modules (legacy JARs without Automatic-Module-Name).
+              task.getMainModule()
+                  .set(
+                      runTaskProvider.flatMap(
+                          run -> {
+                            if (run.getMainModule().isPresent()) {
+                              return run.getMainModule();
+                            }
+                            // Auto-detect from module-info.java
+                            return project
+                                .provider(() -> detectModuleName(project))
+                                .orElse(project.provider(() -> null));
+                          }));
+
+              // Build classpath: runtime classpath + project JAR (for policy discovery)
+              // We get the classpath from the main source set to avoid creating a dependency
+              // on the run task, then add the project JAR explicitly for discovery mode.
+              JavaPluginExtension javaExt =
+                  project.getExtensions().getByType(JavaPluginExtension.class);
+              SourceSet mainSourceSet =
+                  javaExt.getSourceSets().getByName(SourceSet.MAIN_SOURCE_SET_NAME);
+
+              // Get the jar task to include the project JAR in the classpath
+              TaskProvider<Jar> jarTask =
+                  project.getTasks().named(JavaPlugin.JAR_TASK_NAME, Jar.class);
+              task.dependsOn(jarTask);
+
+              // Combine runtime classpath with project JAR for discovery mode
+              task.setClasspath(
+                  project
+                      .files(jarTask.flatMap(Jar::getArchiveFile))
+                      .plus(mainSourceSet.getRuntimeClasspath()));
 
               // Configure JVM arguments with agent
               task.doFirst(
@@ -215,6 +326,18 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                               + policyFile.getAbsolutePath());
                     }
 
+                    // Add external policies directory if configured
+                    if (extension.getExternalPoliciesSourceDir().isPresent()) {
+                      File sourceDir = extension.getExternalPoliciesSourceDir().get().getAsFile();
+                      if (sourceDir.exists() && sourceDir.isDirectory()) {
+                        File outputDir = extension.getExternalPoliciesOutputDir().get().getAsFile();
+                        jvmArgs.add("-Djguard.policy.override=" + outputDir.getAbsolutePath());
+                        project
+                            .getLogger()
+                            .lifecycle("  External policies: " + outputDir.getAbsolutePath());
+                      }
+                    }
+
                     // Add mode from property or extension
                     String mode =
                         getPropertyOrExtension(project, "jguard.mode", extension.getMode());
@@ -226,6 +349,16 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                     String logLevel = extension.getLogLevel().getOrNull();
                     if (logLevel != null) {
                       jvmArgs.add("-Djguard.log.level=" + logLevel);
+                    }
+
+                    // Add hot reload configuration
+                    boolean hotReload = Boolean.TRUE.equals(extension.getHotReload().getOrNull());
+                    if (hotReload) {
+                      jvmArgs.add("-Djguard.reload=true");
+                      Integer interval = extension.getHotReloadInterval().getOrNull();
+                      if (interval != null && interval != 5) { // Only add if not default
+                        jvmArgs.add("-Djguard.reload.interval=" + interval);
+                      }
                     }
 
                     task.setJvmArgs(jvmArgs);
@@ -240,6 +373,15 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                     }
                     if (mode != null) {
                       project.getLogger().lifecycle("  Mode: " + mode);
+                    }
+                    if (hotReload) {
+                      Integer interval = extension.getHotReloadInterval().getOrNull();
+                      project
+                          .getLogger()
+                          .lifecycle(
+                              "  Hot reload: enabled (interval="
+                                  + (interval != null ? interval : 5)
+                                  + "s)");
                     }
                   });
             });
@@ -294,6 +436,33 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
     return extensionValue.getOrNull();
   }
 
+  /**
+   * Auto-detects the module name from module-info.java.
+   *
+   * @param project the Gradle project
+   * @return the module name, or null if not found or not a modular project
+   */
+  private String detectModuleName(Project project) {
+    File moduleInfo = project.file("src/main/java/module-info.java");
+    if (!moduleInfo.exists()) {
+      return null;
+    }
+
+    try {
+      String content = new String(java.nio.file.Files.readAllBytes(moduleInfo.toPath()));
+      // Simple regex to extract module name from "module foo.bar {"
+      java.util.regex.Pattern pattern =
+          java.util.regex.Pattern.compile("\\bmodule\\s+([\\w.]+)\\s*\\{");
+      java.util.regex.Matcher matcher = pattern.matcher(content);
+      if (matcher.find()) {
+        return matcher.group(1);
+      }
+    } catch (Exception e) {
+      project.getLogger().debug("Failed to detect module name: {}", e.getMessage());
+    }
+    return null;
+  }
+
   private void configureExtensionDefaults(Project project, JGuardPolicyExtension extension) {
     extension
         .getSourceFile()
@@ -310,5 +479,16 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
     extension.getLogLevel().convention("info");
     extension.getDiscoveryMode().convention(true); // Auto-discover policies by default
     extension.getAllowUnsignedPolicies().convention(false);
+
+    // External policies defaults
+    // Note: externalPoliciesSourceDir has no default - must be explicitly set to enable
+    extension
+        .getExternalPoliciesOutputDir()
+        .convention(project.getLayout().getBuildDirectory().dir("external-policies"));
+    extension.getExternalPoliciesIncludeJson().convention(false);
+
+    // Hot reload defaults
+    extension.getHotReload().convention(false);
+    extension.getHotReloadInterval().convention(5);
   }
 }

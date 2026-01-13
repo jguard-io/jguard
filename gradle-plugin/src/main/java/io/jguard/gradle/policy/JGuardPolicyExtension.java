@@ -119,4 +119,78 @@ public abstract class JGuardPolicyExtension {
    * <p>Default: {@code false}
    */
   public abstract Property<Boolean> getAllowUnsignedPolicies();
+
+  // ========================================================================
+  // External Policies Configuration
+  // ========================================================================
+
+  /**
+   * The source directory containing external policy {@code .jguard} files.
+   *
+   * <p>All {@code *.jguard} files in this directory will be compiled to binary format. The output
+   * filename will be derived from the source filename (e.g., {@code _global.jguard} becomes {@code
+   * _global.bin}, {@code com.example.lib.jguard} becomes {@code com.example.lib.bin}).
+   *
+   * <p>Default: not set (external policy compilation disabled)
+   *
+   * <p>Example usage:
+   *
+   * <pre>
+   * jguardPolicy {
+   *     externalPoliciesSourceDir = file("policies-src")
+   *     externalPoliciesOutputDir = file("policies")
+   * }
+   * </pre>
+   */
+  public abstract DirectoryProperty getExternalPoliciesSourceDir();
+
+  /**
+   * The output directory for compiled external policy {@code .bin} files.
+   *
+   * <p>This is the directory that should be passed to the jGuard agent via {@code
+   * -Djguard.policy.override=/path/to/policies}.
+   *
+   * <p>Default: {@code build/external-policies/}
+   */
+  public abstract DirectoryProperty getExternalPoliciesOutputDir();
+
+  /**
+   * Whether to generate JSON alongside binary for external policies (for debugging).
+   *
+   * <p>Default: {@code false}
+   */
+  public abstract Property<Boolean> getExternalPoliciesIncludeJson();
+
+  // ========================================================================
+  // Hot Reload Configuration
+  // ========================================================================
+
+  /**
+   * Whether to enable policy hot reload.
+   *
+   * <p>When enabled, the agent watches for policy file changes and reloads them without requiring a
+   * JVM restart. This is useful for:
+   *
+   * <ul>
+   *   <li>Development: quickly iterate on policy definitions
+   *   <li>Operations: adjust permissions without service restarts
+   *   <li>Emergency response: rapidly restrict compromised modules
+   * </ul>
+   *
+   * <p>In discovery mode, hot reload watches the external policy override directory. In explicit
+   * policy mode, it watches both the policy file and override directory.
+   *
+   * <p>Default: {@code false}
+   */
+  public abstract Property<Boolean> getHotReload();
+
+  /**
+   * The interval in seconds between policy file checks when hot reload is enabled.
+   *
+   * <p>Lower values provide faster response to changes but increase overhead. Higher values reduce
+   * overhead but delay detection of changes.
+   *
+   * <p>Default: {@code 5} seconds
+   */
+  public abstract Property<Integer> getHotReloadInterval();
 }

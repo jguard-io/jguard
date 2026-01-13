@@ -1,0 +1,36 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The jGuard Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+
+// External policy to GRANT capabilities to a legacy (non-jGuard) library.
+//
+// The library has NO embedded policy, so by default ALL operations are BLOCKED.
+// This external policy allows the deployer to grant specific capabilities
+// (allowlisting) to the library.
+//
+// This demonstrates the "restrictive by default" principle: third-party code
+// cannot do anything sensitive unless explicitly permitted by the deployer.
+//
+// NOTE: The module name "legacy.library" is auto-derived from the JAR filename
+// (legacy-library.jar). Java converts hyphens to dots in automatic module names.
+// For real third-party libraries, use: jar --describe-module --file=library.jar
+// to discover the module name.
+
+security module legacy.library {
+
+    // Grant filesystem read for config files
+    entitle module to fs.read("config", "**");
+
+    // Grant system property read
+    entitle module to system.property.read;
+
+    // NOTE: We intentionally do NOT grant:
+    // - network.outbound (library cannot phone home)
+    // - threads.create (library cannot spawn threads)
+    // - native.load (library cannot load native code)
+
+}

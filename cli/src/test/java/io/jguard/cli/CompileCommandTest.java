@@ -21,8 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-/** Tests for the compile subcommand via jguard parent. */
-@DisplayName("jguard compile")
+/** Tests for the jguardc compiler CLI. */
+@DisplayName("jguardc")
 class CompileCommandTest {
 
   @TempDir Path tempDir;
@@ -35,18 +35,18 @@ class CompileCommandTest {
   void setUp() {
     out = new StringWriter();
     err = new StringWriter();
-    cmd = new CommandLine(new JGuard());
+    cmd = new CommandLine(new JGuardc());
     cmd.setOut(new PrintWriter(out));
     cmd.setErr(new PrintWriter(err));
   }
 
   @Test
-  @DisplayName("compiles valid policy via subcommand")
+  @DisplayName("compiles valid policy")
   void compilesValidPolicy() throws IOException, URISyntaxException {
     Path source = getResource("valid-policy.jguard");
     Path output = tempDir.resolve("policy.bin");
 
-    int exitCode = cmd.execute("compile", "-o", output.toString(), source.toString());
+    int exitCode = cmd.execute("-o", output.toString(), source.toString());
 
     assertThat(exitCode).isZero();
     assertThat(output).exists();
@@ -61,20 +61,14 @@ class CompileCommandTest {
   }
 
   @Test
-  @DisplayName("compiles with JSON output via subcommand")
+  @DisplayName("compiles with JSON output")
   void compilesWithJsonOutput() throws IOException, URISyntaxException {
     Path source = getResource("valid-policy.jguard");
     Path binOutput = tempDir.resolve("policy.bin");
     Path jsonOutput = tempDir.resolve("policy.json");
 
     int exitCode =
-        cmd.execute(
-            "compile",
-            "-o",
-            binOutput.toString(),
-            "--json",
-            jsonOutput.toString(),
-            source.toString());
+        cmd.execute("-o", binOutput.toString(), "--json", jsonOutput.toString(), source.toString());
 
     assertThat(exitCode).isZero();
     assertThat(binOutput).exists();
@@ -90,37 +84,22 @@ class CompileCommandTest {
     Path output = tempDir.resolve("policy.bin");
     Path nonexistent = tempDir.resolve("nonexistent.jguard");
 
-    int exitCode = cmd.execute("compile", "-o", output.toString(), nonexistent.toString());
+    int exitCode = cmd.execute("-o", output.toString(), nonexistent.toString());
 
     assertThat(exitCode).isEqualTo(1);
     assertThat(err.toString()).contains("does not exist");
   }
 
   @Test
-  @DisplayName("shows compile subcommand help")
-  void showsCompileHelp() {
-    int exitCode = cmd.execute("compile", "--help");
-
-    assertThat(exitCode).isZero();
-    String output = out.toString();
-    assertThat(output).contains("compile");
-    assertThat(output).contains("--output");
-    assertThat(output).contains("--json");
-  }
-
-  @Test
-  @DisplayName("shows parent help with available subcommands")
-  void showsParentHelp() {
+  @DisplayName("shows help")
+  void showsHelp() {
     int exitCode = cmd.execute("--help");
 
     assertThat(exitCode).isZero();
     String output = out.toString();
-    assertThat(output).contains("jguard");
-    assertThat(output).contains("compile");
-    assertThat(output).contains("inspect");
-    assertThat(output).contains("list");
-    assertThat(output).contains("diff");
-    assertThat(output).contains("validate-override");
+    assertThat(output).contains("jguardc");
+    assertThat(output).contains("--output");
+    assertThat(output).contains("--json");
   }
 
   @Test
@@ -129,8 +108,7 @@ class CompileCommandTest {
     int exitCode = cmd.execute("--version");
 
     assertThat(exitCode).isZero();
-    assertThat(out.toString()).contains("jguard");
-    assertThat(out.toString()).contains("0.2.0");
+    assertThat(out.toString()).contains("jguardc");
   }
 
   // ===== Helper methods =====

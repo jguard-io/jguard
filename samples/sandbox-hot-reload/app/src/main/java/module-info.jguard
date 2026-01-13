@@ -1,0 +1,13 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Embedded policy for the hot reload demo.
+// This provides minimal base entitlements.
+// External policies (in policies-src/) add additional permissions
+// and can be modified at runtime with hot reload.
+//
+
+security module io.jguard.samples.hotreload {
+    // Base entitlement: always allow reading system properties
+    entitle module to system.property.read;
+}

@@ -1,0 +1,13 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Valid override - contains only entitlements from the base policy.
+// The validate-override command checks that all override entitlements
+// exist (exactly) in the embedded policy.
+//
+
+security module com.example.sample {
+    // These exist exactly in the base policy
+    entitle module to threads.create;
+    entitle module to native.load;
+}

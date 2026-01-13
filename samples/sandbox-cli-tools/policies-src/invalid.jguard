@@ -1,0 +1,10 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Invalid policy for error handling demo.
+//
+
+security module com.example.sample {
+    // This capability does not exist - will produce an error
+    entitle module to bad.capability;
+}

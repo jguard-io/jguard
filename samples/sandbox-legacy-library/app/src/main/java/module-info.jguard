@@ -1,0 +1,17 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The jGuard Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+
+// The app's own policy - only grants what the APP needs, not the library.
+// The library has NO embedded policy and will be blocked by default.
+
+security module io.jguard.samples.legacy.app {
+
+    // App needs filesystem write to create config directory
+    entitle module to fs.write("config", "**");
+
+}

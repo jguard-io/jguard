@@ -18,9 +18,9 @@ import io.jguard.bootstrap.AgentConfig;
 import io.jguard.bootstrap.AgentLogger;
 import io.jguard.bootstrap.EnforcementMode;
 import io.jguard.policy.model.ApplicationPolicy;
-import io.jguard.policy.model.PolicyDescriptor;
 import io.jguard.policy.serialization.BinaryPolicyReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -74,17 +74,18 @@ public final class AgentInitializer {
 
     // Load policy - either via discovery or from explicit path
     ApplicationPolicy policy;
+    ApplicationPolicy basePolicy = null; // For hot reload in discovery mode
     if (config.discoveryEnabled()) {
       LOG.info("Policy discovery enabled - scanning for embedded policies");
       try {
-        policy = PolicyDiscovery.discoverEmbedded(config);
+        basePolicy = PolicyDiscovery.discoverEmbedded(config);
+        policy = basePolicy;
       } catch (PolicyDiscovery.PolicyDiscoveryException e) {
         throw new RuntimeException("Policy discovery failed: " + e.getMessage(), e);
       }
     } else {
       LOG.info("Loading policy from explicit path: {}", config.policyPath());
-      PolicyDescriptor descriptor = loadPolicy(config.policyPath());
-      policy = ApplicationPolicy.fromDescriptor(descriptor);
+      policy = loadPolicy(config.policyPath());
     }
 
     // Apply policy overrides if configured
@@ -102,15 +103,29 @@ public final class AgentInitializer {
     // Install instrumentation
     installInstrumentation(inst);
 
-    // Start hot reload if enabled (only for explicit policy path mode)
+    // Start hot reload if enabled
+    boolean hotReloadStarted = false;
     if (config.hotReloadEnabled()) {
       if (config.discoveryEnabled()) {
-        LOG.warn("Hot reload is not supported in discovery mode - ignoring");
+        // Discovery mode: hot reload external overrides only (base policy is cached)
+        if (config.overrideDir() != null) {
+          reloader =
+              PolicyReloader.forDiscoveryMode(
+                  basePolicy, enforcerRef, config, config.hotReloadIntervalSeconds());
+          reloader.start();
+          hotReloadStarted = true;
+        } else {
+          LOG.warn(
+              "Hot reload in discovery mode requires an override directory "
+                  + "(set -Djguard.policy.override=<dir>)");
+        }
       } else {
+        // Explicit path mode: hot reload policy file and/or overrides
         reloader =
             new PolicyReloader(
                 config.policyPath(), enforcerRef, config, config.hotReloadIntervalSeconds());
         reloader.start();
+        hotReloadStarted = true;
       }
     }
 
@@ -120,7 +135,7 @@ public final class AgentInitializer {
         policy.modules().size(),
         enforcer.getModuleNames(),
         config.mode(),
-        config.hotReloadEnabled() && !config.discoveryEnabled());
+        hotReloadStarted);
   }
 
   /**
@@ -141,12 +156,15 @@ public final class AgentInitializer {
     return config != null ? config.mode() : EnforcementMode.STRICT;
   }
 
-  private static PolicyDescriptor loadPolicy(Path path) throws IOException {
+  private static ApplicationPolicy loadPolicy(Path path) throws IOException {
     if (!Files.exists(path)) {
       throw new IOException("Policy file not found: " + path);
     }
     LOG.info("Loading policy from: {}", path);
-    return BinaryPolicyReader.fromFile(path);
+    // Use readApplicationPolicy to support both v1 and v2 formats
+    try (InputStream is = Files.newInputStream(path)) {
+      return BinaryPolicyReader.readApplicationPolicy(is);
+    }
   }
 
   /**

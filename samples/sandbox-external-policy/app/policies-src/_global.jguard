@@ -1,0 +1,27 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The jGuard Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+
+// Global policy applied to ALL modules in the application.
+// The module name here is "_global" by convention for documentation purposes,
+// but what makes this global is the filename (_global.bin), not the module name.
+//
+// Use case: Organization-wide security policy that no module can override.
+// These denials apply even if a module's embedded policy grants the capability.
+
+security module _global {
+
+    // DENY native library loading for ALL modules.
+    // This is a significant security risk and should be explicitly allowed
+    // only when absolutely necessary and properly audited.
+    deny module to native.load;
+
+    // DENY writing system properties for ALL modules.
+    // Use defensive deny to suppress warning if not already granted.
+    deny(defensive) module to system.property.write;
+
+}

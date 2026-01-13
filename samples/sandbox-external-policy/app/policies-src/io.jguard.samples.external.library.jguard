@@ -1,0 +1,54 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The jGuard Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+
+// External policy for the "overly permissive" third-party library.
+//
+// The library's embedded policy grants broad capabilities to its entire module:
+//   - network.outbound (to entire module)
+//   - threads.create (to entire module)
+//   - native.load (to entire module) -- DANGEROUS!
+//   - fs.read("config", "**")
+//   - system.property.read
+//
+// This external policy demonstrates how a deployer can RESTRICT these
+// at deployment time without modifying the library itself.
+
+security module io.jguard.samples.external.library {
+
+    // ========================================================================
+    // DENY: Revoke dangerous capabilities
+    // ========================================================================
+
+    // DENY native.load - Too dangerous to allow from a third-party library.
+    // Even though the embedded policy grants this, we revoke it.
+    deny module to native.load;
+
+    // DENY threads.create - We don't want this library spawning threads.
+    // Our application will manage its own threading.
+    deny module to threads.create;
+
+    // ========================================================================
+    // ALLOW: Keep legitimate capabilities (no change needed)
+    // ========================================================================
+
+    // The embedded policy's fs.read("config", "**") and system.property.read
+    // are legitimate and we don't need to override them.
+    // They remain in effect from the embedded policy.
+
+    // ========================================================================
+    // OPTIONAL: Could add grants if needed
+    // ========================================================================
+
+    // If the library needed additional capabilities not in its embedded policy,
+    // we could GRANT them here. For example:
+    //
+    // entitle module to env.read("MY_APP_*");
+    //
+    // Grants are additive - they expand the embedded policy's permissions.
+
+}

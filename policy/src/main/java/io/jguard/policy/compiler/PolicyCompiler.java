@@ -9,6 +9,8 @@ package io.jguard.policy.compiler;
 
 import io.jguard.policy.ast.PolicyFile;
 import io.jguard.policy.lexer.Lexer;
+import io.jguard.policy.model.ApplicationPolicy;
+import io.jguard.policy.model.ModulePolicy;
 import io.jguard.policy.model.PolicyBuilder;
 import io.jguard.policy.model.PolicyDescriptor;
 import io.jguard.policy.parser.Parser;
@@ -76,9 +78,12 @@ public final class PolicyCompiler {
     // Ensure output directories exist
     Files.createDirectories(binOutput.getParent());
 
-    // Write binary output
+    // Write binary output using V2 format (supports entitlements and denials)
     try (OutputStream out = Files.newOutputStream(binOutput)) {
-      BinaryPolicyWriter.write(policy, out);
+      ModulePolicy modulePolicy =
+          new ModulePolicy(policy.moduleName(), policy.entitlements(), policy.denials());
+      ApplicationPolicy appPolicy = ApplicationPolicy.single(modulePolicy);
+      BinaryPolicyWriter.write(appPolicy, out);
     }
 
     // Write JSON output if requested

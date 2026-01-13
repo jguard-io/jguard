@@ -116,11 +116,16 @@ public final class PolicyMerger {
       }
     }
 
-    // Check for external policies that don't match any loaded module (unknown modules)
-    checkUnknownModulePolicies(externalDir, embedded, externalPolicies);
+    // Load external policies for modules that DON'T have embedded policies.
+    // This allows external policies to grant capabilities to legacy libraries
+    // that were not built with jGuard (no embedded policy).
+    Map<String, ModulePolicy> newModulePolicies = loadNewModulePolicies(externalDir, embedded);
+
+    // Check for external policies that don't match any module (warning only)
+    checkUnknownModulePolicies(externalDir, embedded, externalPolicies, newModulePolicies);
 
     // If no external policies found, return embedded as-is
-    if (globalPolicy.isEmpty() && externalPolicies.isEmpty()) {
+    if (globalPolicy.isEmpty() && externalPolicies.isEmpty() && newModulePolicies.isEmpty()) {
       LOG.debug("No external policy files found in {}, using embedded policy as-is", externalDir);
       return embedded;
     }
@@ -146,6 +151,18 @@ public final class PolicyMerger {
             grantDelta >= 0 ? "+" : "",
             grantDelta);
       }
+    }
+
+    // Add new modules from external policies (legacy libraries without embedded policies)
+    for (Map.Entry<String, ModulePolicy> entry : newModulePolicies.entrySet()) {
+      ModulePolicy external = entry.getValue();
+      // Apply global policy to new modules as well
+      ModulePolicy merged = mergeNewModule(external, globalPolicy.orElse(null));
+      mergedModules.add(merged);
+      LOG.info(
+          "Module '{}': {} entitlements from external policy (no embedded policy)",
+          entry.getKey(),
+          merged.entitlements().size());
     }
 
     return ApplicationPolicy.create(mergedModules);
@@ -324,12 +341,99 @@ public final class PolicyMerger {
   }
 
   /**
-   * Checks for external policy files that don't match any loaded module.
+   * Loads external policies for modules that don't have embedded policies.
    *
-   * <p>This warns about potential typos or forward-compatibility policies.
+   * <p>This allows external policies to grant capabilities to legacy libraries that were not built
+   * with jGuard. Scans the external directory for .bin files that don't match any embedded module.
+   *
+   * @param externalDir the external policy directory
+   * @param embedded the embedded policy (to check which modules already have policies)
+   * @return map of module name to external policy for new modules
+   * @throws IOException if reading files fails
    */
+  private static Map<String, ModulePolicy> loadNewModulePolicies(
+      Path externalDir, ApplicationPolicy embedded) throws IOException {
+    Set<String> embeddedModules = new HashSet<>();
+    for (ModulePolicy module : embedded.modules()) {
+      embeddedModules.add(module.moduleName());
+    }
+
+    Map<String, ModulePolicy> newPolicies = new HashMap<>();
+
+    // Scan for .bin files that don't match embedded modules
+    try (var stream = Files.list(externalDir)) {
+      List<Path> candidates =
+          stream
+              .filter(Files::isRegularFile)
+              .filter(p -> p.getFileName().toString().endsWith(".bin"))
+              .filter(p -> !p.getFileName().toString().equals(GLOBAL_POLICY_FILENAME))
+              .toList();
+
+      for (Path path : candidates) {
+        String filename = path.getFileName().toString();
+        String moduleName = filename.substring(0, filename.length() - 4); // Remove .bin
+
+        // Skip if this module already has an embedded policy
+        if (embeddedModules.contains(moduleName)) {
+          continue;
+        }
+
+        // Load the external policy for this new module
+        Optional<ModulePolicy> policy = loadExternalPolicy(externalDir, filename);
+        if (policy.isPresent()) {
+          newPolicies.put(moduleName, policy.get());
+          LOG.info(
+              "Loaded external policy for legacy module '{}' ({} entitlements, {} denials)",
+              moduleName,
+              policy.get().entitlements().size(),
+              policy.get().denials().size());
+        }
+      }
+    }
+
+    return newPolicies;
+  }
+
+  /**
+   * Merges a new module (from external policy only) with global policy.
+   *
+   * <p>This is for modules that have no embedded policy - the external policy becomes the base, and
+   * global denials still apply.
+   *
+   * @param external the external policy for the new module
+   * @param global the global policy (may be null)
+   * @return the merged module policy
+   */
+  private static ModulePolicy mergeNewModule(ModulePolicy external, ModulePolicy global) {
+    if (global == null) {
+      return external;
+    }
+
+    // Apply global grants and denials to the external policy
+    Set<Entitlement> allGrants = new HashSet<>(external.entitlements());
+    allGrants.addAll(global.entitlements());
+
+    Set<Denial> allDenials = new HashSet<>();
+    if (external.hasDenials()) {
+      allDenials.addAll(external.denials());
+    }
+    allDenials.addAll(global.denials());
+
+    // Apply denials
+    Set<Entitlement> effective = new HashSet<>(allGrants);
+    for (Denial denial : allDenials) {
+      List<Entitlement> toRemove = findMatchingEntitlements(effective, denial);
+      effective.removeAll(toRemove);
+    }
+
+    return new ModulePolicy(external.moduleName(), List.copyOf(effective), List.of());
+  }
+
   private static void checkUnknownModulePolicies(
-      Path externalDir, ApplicationPolicy embedded, Map<String, ModulePolicy> loadedExternal)
+      Path externalDir,
+      ApplicationPolicy embedded,
+      Map<String, ModulePolicy> loadedExternal,
+      Map<String, ModulePolicy> newModulePolicies)
       throws IOException {
     Set<String> knownModules = new HashSet<>();
     for (ModulePolicy module : embedded.modules()) {
@@ -349,9 +453,11 @@ public final class PolicyMerger {
                 }
 
                 String moduleName = filename.substring(0, filename.length() - 4); // Remove .bin
-                if (!knownModules.contains(moduleName) && !loadedExternal.containsKey(moduleName)) {
-                  LOG.warn(
-                      "External policy '{}' does not match any loaded module", path.getFileName());
+                // Now also check newModulePolicies - these are valid, not unknown
+                if (!knownModules.contains(moduleName)
+                    && !loadedExternal.containsKey(moduleName)
+                    && !newModulePolicies.containsKey(moduleName)) {
+                  LOG.warn("External policy '{}' could not be loaded", path.getFileName());
                 }
               });
     }
