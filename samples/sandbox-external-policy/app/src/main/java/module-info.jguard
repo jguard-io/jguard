@@ -14,4 +14,19 @@ security module io.jguard.samples.external.app {
     // The app itself just needs to read system properties for configuration
     entitle module to system.property.read;
 
+    // JDK internal operations (security/random init) require these permissions
+    // because JDK operations are attributed to calling application code.
+    // Note: In production you may want narrower paths, but for this sample
+    // we need access to JDK config files and temp directory.
+    entitle module to threads.create;
+
+    // Read access to JDK config files (needed for security/network class init)
+    // Production apps should use narrower paths like $JAVA_HOME/conf/**
+    entitle module to fs.read("/usr", "**");
+    entitle module to fs.read("/Library", "**");
+
+    // Write access to system temp for JDK's SeedGenerator
+    entitle module to fs.write("/var/folders", "**");
+    entitle module to fs.write("/tmp", "**");
+
 }

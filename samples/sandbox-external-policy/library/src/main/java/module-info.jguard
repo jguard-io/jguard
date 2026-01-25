@@ -31,6 +31,11 @@ security module io.jguard.samples.external.library {
     // Legitimate: filesystem read for config
     entitle module to fs.read("config", "**");
 
+    // Legitimate: filesystem read for JDK files (needed for network/security init)
+    // Note: Still overly permissive, but narrower than root
+    entitle module to fs.read("/usr", "**");
+    entitle module to fs.read("/Library", "**");
+
     // Legitimate: system property read
     entitle module to system.property.read;
 

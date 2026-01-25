@@ -17,8 +17,10 @@ security module io.jguard.samples.multimodule.core {
   entitle module to fs.write("build/output", "**");
 
   // v0.3: Allow process execution for config validation (echo only)
+  // Also need system.property.read because ProcessBuilder reads JDK properties during init
   entitle module to process.exec("/bin/echo");
   entitle module to process.exec("/usr/bin/echo");
+  entitle module to system.property.read;
 
   // v0.3: Allow hard link creation in build output directory
   entitle module to fs.hardlink("build/output", "**");
