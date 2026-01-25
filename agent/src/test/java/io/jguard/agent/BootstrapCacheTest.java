@@ -119,12 +119,17 @@ class BootstrapCacheTest {
   // ========== Cache File Name Tests ==========
 
   @Test
-  void getCacheFileName_includesVersion() {
+  void getCacheFileName_includesVersionAndHash() {
     String fileName = JGuardAgent.getCacheFileName();
 
-    assertThat(fileName).isEqualTo("jguard-bootstrap-" + Version.VERSION + ".jar");
-    assertThat(fileName).startsWith("jguard-bootstrap-");
+    // Format: jguard-bootstrap-<version>-<hash>.jar
+    // During unit tests, hash is "unknown" since bootstrap.jar resource isn't available
+    assertThat(fileName).startsWith("jguard-bootstrap-" + Version.VERSION + "-");
     assertThat(fileName).endsWith(".jar");
+    // Verify hash component exists (8 hex chars or "unknown")
+    String withoutPrefix = fileName.replace("jguard-bootstrap-" + Version.VERSION + "-", "");
+    String hash = withoutPrefix.replace(".jar", "");
+    assertThat(hash).matches("([0-9a-f]{8}|unknown)");
   }
 
   @Test

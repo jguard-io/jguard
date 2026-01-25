@@ -59,6 +59,7 @@ public final class AgentConfig {
   private final AgentLogger.Level logLevel;
   private final boolean logDenied;
   private final boolean logAllowed;
+  private final boolean logAllowedExplicitlySet;
   private final boolean hotReloadEnabled;
   private final long hotReloadIntervalSeconds;
   private final boolean discoveryEnabled;
@@ -72,6 +73,7 @@ public final class AgentConfig {
     this.logLevel = builder.logLevel;
     this.logDenied = builder.logDenied;
     this.logAllowed = builder.logAllowed;
+    this.logAllowedExplicitlySet = builder.logAllowedExplicitlySet;
     this.hotReloadEnabled = builder.hotReloadEnabled;
     this.hotReloadIntervalSeconds = builder.hotReloadIntervalSeconds;
     this.discoveryEnabled = builder.discoveryEnabled;
@@ -221,10 +223,18 @@ public final class AgentConfig {
   /**
    * Returns true if allowed operations should be logged.
    *
+   * <p>If explicitly set via {@code jguard.log.allowed}, that value is used. Otherwise, the mode's
+   * default is used (AUDIT mode logs allowed by default, other modes don't).
+   *
    * @return true if allowed operations are logged
    */
   public boolean logAllowed() {
-    return logAllowed || mode.logsAllowed();
+    // Explicit setting takes precedence over mode default
+    if (logAllowedExplicitlySet) {
+      return logAllowed;
+    }
+    // Fall back to mode default (AUDIT logs allowed, others don't)
+    return mode.logsAllowed();
   }
 
   /**
@@ -343,6 +353,7 @@ public final class AgentConfig {
     private AgentLogger.Level logLevel = AgentLogger.Level.INFO;
     private boolean logDenied = true;
     private boolean logAllowed = false;
+    private boolean logAllowedExplicitlySet = false;
     private boolean hotReloadEnabled = false;
     private long hotReloadIntervalSeconds = 5;
     private boolean discoveryEnabled = false;
@@ -400,11 +411,15 @@ public final class AgentConfig {
     /**
      * Sets whether to log allowed operations.
      *
+     * <p>When explicitly set, this value takes precedence over the mode's default. For example,
+     * setting {@code false} in AUDIT mode will suppress allowed operation logs.
+     *
      * @param value true to log allowed operations
      * @return this builder
      */
     public Builder logAllowed(boolean value) {
       this.logAllowed = value;
+      this.logAllowedExplicitlySet = true;
       return this;
     }
 

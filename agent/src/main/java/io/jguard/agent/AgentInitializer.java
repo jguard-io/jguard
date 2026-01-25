@@ -71,6 +71,8 @@ public final class AgentInitializer {
     AgentLogger.setLevel(config.logLevel());
 
     LOG.info("jGuard agent starting (mode={})", config.mode());
+    LOG.info(
+        "Logging config: logDenied={}, logAllowed={}", config.logDenied(), config.logAllowed());
 
     // Load policy - either via discovery or from explicit path
     ApplicationPolicy policy;

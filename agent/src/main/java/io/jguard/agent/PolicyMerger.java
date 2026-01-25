@@ -165,6 +165,27 @@ public final class PolicyMerger {
           merged.entitlements().size());
     }
 
+    // If global policy exists and has entitlements, create an "unnamed" module policy from it.
+    // This ensures _global entitlements apply to classpath code (unnamed module).
+    // Only create if global has entitlements - a global with only denials doesn't help unnamed.
+    if (globalPolicy.isPresent() && !globalPolicy.get().entitlements().isEmpty()) {
+      boolean hasUnnamedPolicy =
+          mergedModules.stream()
+              .anyMatch(m -> ApplicationPolicy.UNNAMED_MODULE.equals(m.moduleName()));
+      if (!hasUnnamedPolicy) {
+        ModulePolicy unnamedFromGlobal =
+            new ModulePolicy(
+                ApplicationPolicy.UNNAMED_MODULE,
+                globalPolicy.get().entitlements(),
+                globalPolicy.get().denials(),
+                globalPolicy.get().trusted());
+        mergedModules.add(unnamedFromGlobal);
+        LOG.info(
+            "Created 'unnamed' module policy from _global ({} entitlements)",
+            unnamedFromGlobal.entitlements().size());
+      }
+    }
+
     return ApplicationPolicy.create(mergedModules);
   }
 

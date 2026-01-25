@@ -20,6 +20,8 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Set;
 import java.util.jar.JarFile;
 
@@ -273,12 +275,60 @@ public final class JGuardAgent {
   }
 
   /**
-   * Returns the cache file name for the current jGuard version.
+   * Returns the cache file name for the current jGuard version and content.
    *
-   * @return cache file name like "jguard-bootstrap-0.3.0.jar"
+   * <p>The filename includes a content hash to ensure cache invalidation when the embedded
+   * bootstrap JAR changes. This is critical for SNAPSHOT versions where the version string doesn't
+   * change but the content does.
+   *
+   * @return cache file name like "jguard-bootstrap-0.3.0-a1b2c3d4.jar"
    */
   static String getCacheFileName() {
-    return "jguard-bootstrap-" + Version.VERSION + ".jar";
+    String hash = getBootstrapContentHash();
+    return "jguard-bootstrap-" + Version.VERSION + "-" + hash + ".jar";
+  }
+
+  /** Cached hash of the embedded bootstrap JAR content. Computed once per JVM. */
+  private static volatile String bootstrapContentHash;
+
+  /**
+   * Computes a short hash of the embedded bootstrap JAR content.
+   *
+   * <p>This is used to create a unique cache filename that changes when the bootstrap JAR content
+   * changes, ensuring stale cached versions are never used.
+   *
+   * @return 8-character hex hash of the bootstrap JAR content, or "unknown" if hashing fails
+   */
+  private static String getBootstrapContentHash() {
+    if (bootstrapContentHash != null) {
+      return bootstrapContentHash;
+    }
+
+    try (InputStream is = JGuardAgent.class.getResourceAsStream(BOOTSTRAP_JAR_RESOURCE)) {
+      if (is == null) {
+        bootstrapContentHash = "unknown";
+        return bootstrapContentHash;
+      }
+
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      byte[] buffer = new byte[8192];
+      int bytesRead;
+      while ((bytesRead = is.read(buffer)) != -1) {
+        digest.update(buffer, 0, bytesRead);
+      }
+
+      byte[] hashBytes = digest.digest();
+      // Use first 4 bytes (8 hex chars) for a short but unique identifier
+      StringBuilder sb = new StringBuilder();
+      for (int i = 0; i < 4; i++) {
+        sb.append(String.format("%02x", hashBytes[i]));
+      }
+      bootstrapContentHash = sb.toString();
+      return bootstrapContentHash;
+    } catch (IOException | NoSuchAlgorithmException e) {
+      bootstrapContentHash = "unknown";
+      return bootstrapContentHash;
+    }
   }
 
   /**

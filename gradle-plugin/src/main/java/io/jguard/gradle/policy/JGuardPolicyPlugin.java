@@ -145,72 +145,107 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                             });
                       });
 
-              // Configure module path inference for main source compilation and execution tasks.
-              // This ensures non-modular dependencies (legacy JARs without module-info.java)
-              // are placed on the module path and become "automatic modules" that jGuard
-              // can identify and enforce policies on.
-              //
-              // Tests are explicitly configured to run on the classpath (not module path)
-              // because JUnit, AssertJ, and other test frameworks don't have module descriptors.
-              project
-                  .getTasks()
-                  .named(
-                      JavaPlugin.COMPILE_JAVA_TASK_NAME,
-                      JavaCompile.class,
-                      task -> {
-                        task.getModularity().getInferModulePath().set(true);
-                        // For automatic modules without Automatic-Module-Name manifest attribute,
-                        // Gradle's inferModulePath doesn't work. Force module path explicitly.
-                        task.doFirst(
-                            t -> {
-                              JavaCompile jc = (JavaCompile) t;
-                              String cp = jc.getClasspath().getAsPath();
-                              if (!cp.isEmpty()) {
-                                jc.getOptions().getCompilerArgs().add("--module-path");
-                                jc.getOptions().getCompilerArgs().add(cp);
-                                jc.setClasspath(project.files());
-                              }
-                            });
-                      });
+              // Only configure module path inference for modular projects (those with
+              // module-info.java).
+              // For non-modular projects, jGuard still works using the "unnamed module" mechanism.
+              File moduleInfoFile = project.file("src/main/java/module-info.java");
+              if (moduleInfoFile.exists()) {
+                // Configure module path inference for main source compilation and execution tasks.
+                // This ensures non-modular dependencies (legacy JARs without module-info.java)
+                // are placed on the module path and become "automatic modules" that jGuard
+                // can identify and enforce policies on.
+                //
+                // Tests are explicitly configured to run on the classpath (not module path)
+                // because JUnit, AssertJ, and other test frameworks don't have module
+                // descriptors.
+                project
+                    .getTasks()
+                    .named(
+                        JavaPlugin.COMPILE_JAVA_TASK_NAME,
+                        JavaCompile.class,
+                        task -> {
+                          task.getModularity().getInferModulePath().set(true);
+                          // For automatic modules without Automatic-Module-Name manifest attribute,
+                          // Gradle's inferModulePath doesn't work. Force module path explicitly.
+                          task.doFirst(
+                              t -> {
+                                JavaCompile jc = (JavaCompile) t;
+                                String cp = jc.getClasspath().getAsPath();
+                                if (!cp.isEmpty()) {
+                                  jc.getOptions().getCompilerArgs().add("--module-path");
+                                  jc.getOptions().getCompilerArgs().add(cp);
+                                  jc.setClasspath(project.files());
+                                }
+                              });
+                        });
 
-              // Tests run on classpath (not module path) for JUnit/AssertJ compatibility
-              project
-                  .getTasks()
-                  .named(
-                      JavaPlugin.COMPILE_TEST_JAVA_TASK_NAME,
-                      JavaCompile.class,
-                      task -> {
-                        task.getModularity().getInferModulePath().set(false);
-                      });
+                // Tests run on classpath (not module path) for JUnit/AssertJ compatibility
+                project
+                    .getTasks()
+                    .named(
+                        JavaPlugin.COMPILE_TEST_JAVA_TASK_NAME,
+                        JavaCompile.class,
+                        task -> {
+                          task.getModularity().getInferModulePath().set(false);
+                        });
+                project
+                    .getTasks()
+                    .withType(
+                        Test.class,
+                        task -> {
+                          task.getModularity().getInferModulePath().set(false);
+                        });
+
+                project
+                    .getTasks()
+                    .withType(
+                        JavaExec.class,
+                        task -> {
+                          // Skip test-related JavaExec tasks
+                          if (task.getName().toLowerCase().contains("test")) {
+                            return;
+                          }
+                          task.getModularity().getInferModulePath().set(true);
+                          // For automatic modules without Automatic-Module-Name manifest attribute,
+                          // Gradle's inferModulePath doesn't work. Force module path explicitly.
+                          task.doFirst(
+                              t -> {
+                                JavaExec je = (JavaExec) t;
+                                String cp = je.getClasspath().getAsPath();
+                                if (!cp.isEmpty() && je.getMainModule().isPresent()) {
+                                  je.jvmArgs("--module-path", cp, "-m", je.getMainModule().get());
+                                  je.setClasspath(project.files());
+                                }
+                              });
+                        });
+              }
+
+              // Wire test tasks to depend on external policies compilation.
+              // External policies are commonly used for test infrastructure (Gradle workers,
+              // JUnit, JaCoCo, etc.), so tests should automatically compile them first.
+              TaskProvider<CompileExternalPoliciesTask> externalPoliciesTaskProvider =
+                  project
+                      .getTasks()
+                      .named(EXTERNAL_POLICIES_TASK_NAME, CompileExternalPoliciesTask.class);
+
               project
                   .getTasks()
                   .withType(
                       Test.class,
                       task -> {
-                        task.getModularity().getInferModulePath().set(false);
-                      });
-
-              project
-                  .getTasks()
-                  .withType(
-                      JavaExec.class,
-                      task -> {
-                        // Skip test-related JavaExec tasks
-                        if (task.getName().toLowerCase().contains("test")) {
-                          return;
-                        }
-                        task.getModularity().getInferModulePath().set(true);
-                        // For automatic modules without Automatic-Module-Name manifest attribute,
-                        // Gradle's inferModulePath doesn't work. Force module path explicitly.
-                        task.doFirst(
-                            t -> {
-                              JavaExec je = (JavaExec) t;
-                              String cp = je.getClasspath().getAsPath();
-                              if (!cp.isEmpty() && je.getMainModule().isPresent()) {
-                                je.jvmArgs("--module-path", cp, "-m", je.getMainModule().get());
-                                je.setClasspath(project.files());
-                              }
-                            });
+                        // Only add dependency if external policies source dir is configured
+                        task.dependsOn(
+                            project.provider(
+                                () -> {
+                                  if (extension.getExternalPoliciesSourceDir().isPresent()) {
+                                    File sourceDir =
+                                        extension.getExternalPoliciesSourceDir().get().getAsFile();
+                                    if (sourceDir.exists() && sourceDir.isDirectory()) {
+                                      return externalPoliciesTaskProvider;
+                                    }
+                                  }
+                                  return project.files(); // Empty dependency if not configured
+                                }));
                       });
             });
 
@@ -511,7 +546,10 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
     extension
         .getOutputDir()
         .convention(project.getLayout().getBuildDirectory().dir("generated/jguard"));
-    extension.getIncludeJson().convention(true);
+    // JSON output disabled by default since Jackson is excluded from plugin dependencies
+    // to avoid JPMS conflicts in Gradle buildSrc. Enable with includeJson = true if Jackson
+    // is available on the classpath.
+    extension.getIncludeJson().convention(false);
     extension.getBinName().convention("policy.bin");
     extension.getJsonName().convention("policy.json");
     extension.getJarPath().convention("META-INF/jguard");

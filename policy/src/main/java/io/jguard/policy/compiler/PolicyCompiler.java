@@ -90,8 +90,16 @@ public final class PolicyCompiler {
     // Write JSON output if requested
     if (jsonOutput != null) {
       Files.createDirectories(jsonOutput.getParent());
-      String json = JsonPolicyWriter.toJson(policy);
-      Files.writeString(jsonOutput, json);
+      try {
+        String json = JsonPolicyWriter.toJson(policy);
+        Files.writeString(jsonOutput, json);
+      } catch (NoClassDefFoundError e) {
+        // Jackson not available - return error with helpful message
+        return CompilationResult.failure(
+            CompilationResult.Diagnostic.error(
+                "JSON output requires Jackson library which is not available. "
+                    + "Use the jGuard CLI (jguardc) for JSON output, or disable includeJson in the Gradle plugin."));
+      }
     }
 
     // Return success with any warnings
