@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://lucenia.io/wp-content/uploads/2026/01/JGuard-Logo-Name-1200x400-1.png" alt="jGuard" width="600">
+  <img src="https://jguard.io/img/jguard-logo-transparent-background.png" alt="jGuard" width="600">
 </p>
 
 <p align="center">
