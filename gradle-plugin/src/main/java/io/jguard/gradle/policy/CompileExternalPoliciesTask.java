@@ -16,13 +16,15 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
+import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.provider.Property;
+import org.gradle.api.tasks.IgnoreEmptyDirectories;
 import org.gradle.api.tasks.Input;
-import org.gradle.api.tasks.InputDirectory;
+import org.gradle.api.tasks.InputFiles;
+import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.PathSensitive;
@@ -42,11 +44,26 @@ import org.gradle.api.tasks.TaskAction;
  */
 public abstract class CompileExternalPoliciesTask extends DefaultTask {
 
-  /** The source directory containing {@code .jguard} files. Task is skipped if empty. */
-  @InputDirectory
-  @SkipWhenEmpty
-  @PathSensitive(PathSensitivity.RELATIVE)
+  /**
+   * The source directory containing {@code .jguard} files.
+   *
+   * <p>This is used as a reference for the source location. The actual input tracking is done via
+   * {@link #getSourceFiles()}.
+   */
+  @Internal
   public abstract DirectoryProperty getSourceDir();
+
+  /**
+   * The source {@code .jguard} files to compile.
+   *
+   * <p>This property tracks the actual file contents for up-to-date checking. Configure this with
+   * the source directory's file tree filtered to {@code *.jguard} files.
+   */
+  @InputFiles
+  @SkipWhenEmpty
+  @IgnoreEmptyDirectories
+  @PathSensitive(PathSensitivity.RELATIVE)
+  public abstract ConfigurableFileCollection getSourceFiles();
 
   /** The output directory for compiled {@code .bin} files. */
   @OutputDirectory
@@ -59,51 +76,48 @@ public abstract class CompileExternalPoliciesTask extends DefaultTask {
 
   @TaskAction
   public void compile() throws IOException {
-    File sourceDir = getSourceDir().get().getAsFile();
     File outputDir = getOutputDir().get().getAsFile();
     boolean includeJson = getIncludeJson().getOrElse(false);
 
     // Ensure output directory exists
     Files.createDirectories(outputDir.toPath());
 
-    // Find all .jguard files
-    List<Path> sourceFiles;
-    try (Stream<Path> files = Files.list(sourceDir.toPath())) {
-      sourceFiles =
-          files.filter(p -> p.toString().endsWith(".jguard")).collect(Collectors.toList());
-    }
+    // Get source files from the tracked input collection
+    List<File> sourceFiles =
+        getSourceFiles().getFiles().stream()
+            .filter(f -> f.getName().endsWith(".jguard"))
+            .collect(Collectors.toList());
 
     if (sourceFiles.isEmpty()) {
-      getLogger().lifecycle("No .jguard files found in {}", sourceDir);
+      getLogger().lifecycle("No .jguard files to compile");
       return;
     }
 
-    getLogger()
-        .lifecycle("Compiling {} external policy file(s) from {}", sourceFiles.size(), sourceDir);
+    getLogger().lifecycle("Compiling {} external policy file(s)", sourceFiles.size());
 
     List<String> errors = new ArrayList<>();
 
-    for (Path sourceFile : sourceFiles) {
-      String baseName = sourceFile.getFileName().toString();
+    for (File sourceFile : sourceFiles) {
+      String baseName = sourceFile.getName();
       baseName = baseName.substring(0, baseName.length() - ".jguard".length());
 
       Path binPath = outputDir.toPath().resolve(baseName + ".bin");
       Path jsonPath = includeJson ? outputDir.toPath().resolve(baseName + ".json") : null;
 
-      getLogger().info("  {} -> {}", sourceFile.getFileName(), binPath.getFileName());
+      getLogger().info("  {} -> {}", sourceFile.getName(), binPath.getFileName());
 
       try {
-        CompilationResult result = PolicyCompiler.compile(sourceFile, binPath, jsonPath);
+        CompilationResult result = PolicyCompiler.compile(sourceFile.toPath(), binPath, jsonPath);
 
         if (result.isFailure()) {
           String fileErrors =
               result.diagnostics().stream()
                   .map(CompilationResult.Diagnostic::toString)
                   .collect(Collectors.joining("\n  "));
-          errors.add(sourceFile.getFileName() + ":\n  " + fileErrors);
+          errors.add(sourceFile.getName() + ":\n  " + fileErrors);
         }
       } catch (IOException e) {
-        errors.add(sourceFile.getFileName() + ": " + e.getMessage());
+        errors.add(sourceFile.getName() + ": " + e.getMessage());
       }
     }
 
