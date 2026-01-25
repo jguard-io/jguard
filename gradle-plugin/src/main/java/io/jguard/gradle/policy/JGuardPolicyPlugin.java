@@ -106,7 +106,24 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
               task.getOutputDir().set(extension.getExternalPoliciesOutputDir());
               task.getIncludeJson().set(extension.getExternalPoliciesIncludeJson());
 
-              // Only enable task if source dir is configured
+              // Wire source files for proper up-to-date tracking
+              // This tracks actual .jguard file contents for incremental builds
+              // Use a provider that returns empty when source dir is not configured
+              task.getSourceFiles()
+                  .from(
+                      project.provider(
+                          () -> {
+                            if (extension.getExternalPoliciesSourceDir().isPresent()) {
+                              return extension
+                                  .getExternalPoliciesSourceDir()
+                                  .get()
+                                  .getAsFileTree()
+                                  .matching(pattern -> pattern.include("*.jguard"));
+                            }
+                            return project.files();
+                          }));
+
+              // Only enable task if source dir is configured and exists
               task.onlyIf(
                   t -> {
                     if (!extension.getExternalPoliciesSourceDir().isPresent()) {
