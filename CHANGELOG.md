@@ -5,6 +5,33 @@ All notable changes to jGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - Unreleased
+
+### Added
+
+#### New Capabilities
+- `process.exec(pattern?)` — Control process execution (`Runtime.exec()`, `ProcessBuilder.start()`)
+  - Optional pattern argument to restrict allowed commands (e.g., `/usr/bin/java`, `/opt/app/bin/*`)
+  - Prevents shell escapes and command injection attacks
+- `fs.hardlink(root, glob)` — Control hard link creation (`Files.createLink()`)
+  - Prevents filesystem boundary bypass attacks via hard links
+  - Requires root directory and glob pattern arguments
+- `crypto.provider` — Control JCE crypto provider modifications
+  - Guards `Security.addProvider()`, `Security.insertProviderAt()`, `Security.removeProvider()`, `Security.setProperty()`
+  - Prevents installation of rogue cryptographic providers
+
+#### Trusted Module Mechanism
+- `trusted;` keyword for modules that need unrestricted access (e.g., native libraries)
+- Override-only: trusted keyword only allowed in external policy override files, not embedded policies
+- Requires explicit opt-in via `-Djguard.allow.trusted=true` system property
+- Security warning logged when trusted modules are loaded
+- Gradle plugin `allowTrusted` configuration property
+
+### Changed
+
+- Binary policy format version bumped to v3 (supports trusted flag)
+- Gradle plugin now supports `allowTrusted` configuration
+
 ## [0.2.0] - Unreleased
 
 ### Added

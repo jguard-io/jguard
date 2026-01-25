@@ -9,8 +9,11 @@ package io.jguard.samples.multimodule.app;
 
 import io.jguard.samples.multimodule.core.ConfigReader;
 import io.jguard.samples.multimodule.network.SimpleHttpClient;
+import io.jguard.samples.multimodule.security.CryptoManager;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.Provider;
+import java.security.Security;
 
 /**
  * Multi-module sandbox demo application.
@@ -54,6 +57,22 @@ public class Main {
 
     // Test 5: Direct network access from app module (should be blocked)
     testDirectNetworkAccess();
+
+    // ===== v0.3 Capability Tests =====
+    System.out.println("===== v0.3 Capability Tests =====");
+    System.out.println();
+
+    // Test 6: Delegated process execution via core module
+    testDelegatedProcessExec();
+
+    // Test 7: Delegated hard link creation via core module
+    testDelegatedHardLink();
+
+    // Test 8: Delegated crypto provider via security module
+    testDelegatedCryptoProvider();
+
+    // Test 9: Direct crypto provider from app module (should be blocked)
+    testDirectCryptoProvider();
 
     System.out.println();
     System.out.println("Demo complete!");
@@ -176,6 +195,85 @@ public class Main {
       System.out.println("  BLOCKED (expected): " + e.getMessage());
     } catch (Exception e) {
       System.out.println("  Connection result: " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  // ========== v0.3 Capability Tests ==========
+
+  private static void testDelegatedProcessExec() {
+    System.out.println("--- TEST 6: Delegated Process Execution (via core module) ---");
+    System.out.println();
+
+    System.out.println("[DELEGATED] ConfigReader.executeEcho(\"Hello from jGuard!\")");
+    System.out.println("  (Core module has process.exec entitlement for /bin/echo)");
+    String result = ConfigReader.executeEcho("Hello from jGuard!");
+    System.out.println("  Result: " + result);
+
+    System.out.println();
+    System.out.println("[DELEGATED] ConfigReader.executeUnauthorized()");
+    System.out.println("  (Core module does NOT have process.exec entitlement for /bin/ls)");
+    result = ConfigReader.executeUnauthorized();
+    System.out.println("  Result: " + result);
+
+    System.out.println();
+  }
+
+  private static void testDelegatedHardLink() {
+    System.out.println("--- TEST 7: Delegated Hard Link Creation (via core module) ---");
+    System.out.println();
+
+    System.out.println("[DELEGATED] ConfigReader.createHardLink(\"source.txt\", \"link.txt\")");
+    System.out.println("  (Core module has fs.hardlink entitlement for build/output)");
+    String result = ConfigReader.createHardLink("source.txt", "link.txt");
+    System.out.println("  Result: " + result);
+
+    System.out.println();
+    System.out.println("[DELEGATED] ConfigReader.createUnauthorizedHardLink()");
+    System.out.println("  (Core module does NOT have fs.hardlink entitlement for /tmp)");
+    result = ConfigReader.createUnauthorizedHardLink();
+    System.out.println("  Result: " + result);
+
+    System.out.println();
+  }
+
+  private static void testDelegatedCryptoProvider() {
+    System.out.println("--- TEST 8: Delegated Crypto Provider (via security module) ---");
+    System.out.println();
+    System.out.println("  Note: Module name contains 'security' - contextual keywords work!");
+    System.out.println();
+
+    System.out.println("[DELEGATED] CryptoManager.listProviders()");
+    System.out.println("  (Security module has crypto.provider entitlement)");
+    String[] providers = CryptoManager.listProviders();
+    System.out.println("  Found " + providers.length + " providers");
+
+    System.out.println();
+    System.out.println("[DELEGATED] CryptoManager.demonstrateProviderModification()");
+    String result = CryptoManager.demonstrateProviderModification();
+    System.out.println("  Result: " + result);
+
+    System.out.println();
+  }
+
+  private static void testDirectCryptoProvider() {
+    System.out.println("--- TEST 9: Direct Crypto Provider (from app module) ---");
+    System.out.println();
+
+    System.out.println("[NOT ENTITLED] Security.addProvider(...)");
+    System.out.println("  (App module does NOT have crypto.provider entitlement)");
+    try {
+      Provider testProvider =
+          new Provider("UnauthorizedProvider", "1.0", "Unauthorized test provider") {
+            private static final long serialVersionUID = 1L;
+          };
+      Security.addProvider(testProvider);
+      System.out.println("  SUCCESS (unexpected): Provider added");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+      Security.removeProvider("UnauthorizedProvider");
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (expected): " + e.getMessage());
     }
 
     System.out.println();

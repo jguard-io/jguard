@@ -244,6 +244,7 @@ The following capabilities are defined in jGuard version 1:
 | ----------------------- | ---------------------------- | ---------------------------------------- |
 | `fs.read`               | `(root, glob)`               | Read files matching glob under root      |
 | `fs.write`              | `(root, glob)`               | Write files matching glob under root     |
+| `fs.hardlink`           | `(root, glob)`               | Create hard links matching glob under root |
 | `network.outbound`      | `(hostPattern?, portSpec?)`  | Open outbound network connections        |
 | `network.listen`        | `(portSpec?)`                | Bind server sockets (optional port/range)|
 | `threads.create`        | (no arguments)               | Create new threads                       |
@@ -251,6 +252,8 @@ The following capabilities are defined in jGuard version 1:
 | `env.read`              | `(pattern?)`                 | Read environment variables               |
 | `system.property.read`  | `(pattern?)`                 | Read system properties                   |
 | `system.property.write` | `(pattern?)`                 | Write system properties                  |
+| `process.exec`          | `(pattern?)`                 | Execute external processes               |
+| `crypto.provider`       | (no arguments)               | Modify crypto providers (JCE)            |
 
 #### Argument details
 
@@ -334,6 +337,54 @@ entitle module to system.property.read("java.home");       // Only java.home
 entitle module to system.property.write("app.**");         // Write app.* hierarchy
 ```
 
+**`fs.hardlink(root, glob)`**
+
+* `root` — base directory path for the link destination (string)
+* `glob` — glob pattern for matching link paths (string, e.g., `"**/*"`, `"*.idx"`)
+
+Hard link creation allows creating a new directory entry pointing to an existing file. This requires special permission because it can bypass filesystem boundaries by linking to files outside the permitted write paths.
+
+Note: Creating a hard link may also require `fs.read` on the existing file and `fs.write` on the link's parent directory, depending on the implementation.
+
+Examples:
+```
+entitle module to fs.hardlink("/data/indices", "**");     // Allow hard links in indices dir
+entitle module to fs.hardlink("/tmp", "*.link");          // Allow .link files in /tmp
+```
+
+**`process.exec(pattern?)`**
+
+* `pattern` — optional command pattern (string); if omitted, allows executing any command
+
+Guards `Runtime.exec()` and `ProcessBuilder.start()`. The pattern matches the first element of the command (the executable path or name).
+
+Pattern syntax:
+* No argument — allows any command
+* `/usr/bin/java` — exact match for specific command
+* `/opt/app/bin/*` — matches any executable in the specified directory
+
+Examples:
+```
+entitle module to process.exec;                           // Any command (dangerous!)
+entitle module to process.exec("/usr/bin/java");          // Only java executable
+entitle io.lucenia.spawner to process.exec("/opt/lucenia/bin/*"); // App-specific binaries
+```
+
+**`crypto.provider`** (no arguments)
+
+Guards modifications to Java Cryptography Extension (JCE) providers:
+* `Security.addProvider(Provider)` — adding a crypto provider
+* `Security.insertProviderAt(Provider, int)` — inserting a provider at position
+* `Security.removeProvider(String)` — removing a crypto provider
+* `Security.setProperty(String, String)` — setting security/crypto configuration
+
+This capability is important for preventing malicious code from installing rogue cryptographic providers (e.g., a compromised BouncyCastle or custom provider that leaks keys).
+
+Example:
+```
+entitle io.lucenia.crypto.. to crypto.provider;         // Allow crypto package to modify providers
+```
+
 Implementations MUST reject entitlement declarations whose arguments do not conform to the capability's signature.
 
 ### 6.2 Accumulation of entitlements
@@ -364,6 +415,39 @@ Use `deny(defensive)` for proactive security policies that deny capabilities reg
 ### 6.5 Default behavior
 
 If no entitlement grants a capability to a subject, that capability is denied.
+
+### 6.6 Trusted modules
+
+A module can be marked as **trusted** to bypass all capability checks:
+
+```
+TrustedDeclaration:
+    trusted ;
+```
+
+Example:
+```
+security module ai.djl.pytorch {
+    trusted;
+}
+```
+
+Trusted modules:
+
+* Bypass ALL capability enforcement at runtime
+* Are intended for native libraries that cannot be modified (e.g., PyTorch, TensorFlow)
+* Can ONLY be declared in external policy override files (not embedded policies)
+* Require explicit opt-in via `-Djguard.allow.trusted=true` system property
+
+**Security Warning:** Trusted modules represent a significant security risk. Use only when:
+1. The module is a native library that cannot be modified
+2. You fully trust the library code
+3. There is no alternative to using the library
+
+Implementations MUST:
+* Reject `trusted;` declarations in embedded policies (compile error)
+* Log a warning when loading a trusted module
+* Require explicit opt-in before honoring trusted declarations
 
 ---
 
@@ -399,7 +483,17 @@ Policy parsing and validation errors MUST identify:
 
 ## 9. Versioning and compatibility
 
-This specification defines **policy format version 1**.
+### 9.1 Format versions
+
+| Version | Features |
+|---------|----------|
+| v1 | Single-module policies (legacy) |
+| v2 | Multi-module policies with denial support |
+| v3 | Multi-module policies with trusted module support |
+
+The current version is **v3**.
+
+### 9.2 Compatibility
 
 Future versions MAY:
 
@@ -407,7 +501,7 @@ Future versions MAY:
 * extend capability argument forms
 * add optional policy constructs
 
-Future versions MUST NOT change the meaning of valid version-1 policies.
+Future versions MUST NOT change the meaning of valid policies from earlier versions.
 
 ---
 

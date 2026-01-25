@@ -17,11 +17,18 @@ import java.util.Objects;
  * multi-module application, each module has its own {@code ModulePolicy} containing the
  * entitlements and denials for code within that module.
  *
+ * <p>A module may be marked as {@code trusted}, in which case all capability checks are bypassed
+ * for code within that module. This is intended as an escape hatch for native libraries (e.g.,
+ * PyTorch) that require unrestricted access. Trusted modules can only be declared in external
+ * policy override files, not in embedded policies.
+ *
  * @param moduleName the fully qualified JPMS module name (e.g., "com.example.core")
  * @param entitlements the granted entitlements for this module (sorted, deduplicated)
  * @param denials the denied capabilities for this module (sorted, deduplicated)
+ * @param trusted whether this module is trusted (all capability checks bypassed)
  */
-public record ModulePolicy(String moduleName, List<Entitlement> entitlements, List<Denial> denials)
+public record ModulePolicy(
+    String moduleName, List<Entitlement> entitlements, List<Denial> denials, boolean trusted)
     implements Comparable<ModulePolicy> {
 
   /** Compact constructor that validates and normalizes the record fields. */
@@ -38,13 +45,40 @@ public record ModulePolicy(String moduleName, List<Entitlement> entitlements, Li
   }
 
   /**
-   * Backwards-compatible constructor for policies without denials.
+   * Backwards-compatible constructor for policies without denials or trusted flag.
    *
    * @param moduleName the module name
    * @param entitlements the entitlements
    */
   public ModulePolicy(String moduleName, List<Entitlement> entitlements) {
-    this(moduleName, entitlements, List.of());
+    this(moduleName, entitlements, List.of(), false);
+  }
+
+  /**
+   * Backwards-compatible constructor for policies without trusted flag.
+   *
+   * @param moduleName the module name
+   * @param entitlements the entitlements
+   * @param denials the denials
+   */
+  public ModulePolicy(String moduleName, List<Entitlement> entitlements, List<Denial> denials) {
+    this(moduleName, entitlements, denials, false);
+  }
+
+  /**
+   * Creates a trusted module policy.
+   *
+   * <p>A trusted module bypasses all capability checks. This is intended for native libraries that
+   * require unrestricted access (e.g., PyTorch, TensorFlow).
+   *
+   * <p><b>Security Warning:</b> Trusted modules have full access to all operations. Only use this
+   * for well-vetted native code that cannot function with restricted permissions.
+   *
+   * @param moduleName the module name
+   * @return a trusted module policy
+   */
+  public static ModulePolicy trusted(String moduleName) {
+    return new ModulePolicy(moduleName, List.of(), List.of(), true);
   }
 
   /**
@@ -55,7 +89,7 @@ public record ModulePolicy(String moduleName, List<Entitlement> entitlements, Li
    */
   public static ModulePolicy fromDescriptor(PolicyDescriptor descriptor) {
     return new ModulePolicy(
-        descriptor.moduleName(), descriptor.entitlements(), descriptor.denials());
+        descriptor.moduleName(), descriptor.entitlements(), descriptor.denials(), false);
   }
 
   /**

@@ -7,20 +7,28 @@
  */
 package io.jguard.samples.multimodule.core;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
- * Reads configuration files.
+ * Reads configuration files and provides core utilities.
  *
- * <p>This class is in the core module which has fs.read entitlement for the "config" directory.
- * When called from another module (like app), the security check uses the CALLER's module, not
+ * <p>This class is in the core module which has:
+ *
+ * <ul>
+ *   <li>fs.read entitlement for the "config" directory
+ *   <li>fs.write entitlement for "build/output"
+ *   <li>process.exec entitlement for /bin/echo
+ *   <li>fs.hardlink entitlement for "build/output"
+ * </ul>
+ *
+ * <p>When called from another module (like app), the security check uses the CALLER's module, not
  * this class's module. So direct file access from app module will be denied.
- *
- * <p>To allow app to read configs safely, use the delegated methods that perform the read within
- * this module's context.
  */
 public final class ConfigReader {
 
@@ -82,5 +90,114 @@ public final class ConfigReader {
     // Note: The security check happens here, but uses the CALLER's module
     // because jGuard walks the stack to find the actual caller
     return Files.readString(path);
+  }
+
+  // ========== v0.3 Capabilities ==========
+
+  /**
+   * Executes an echo command (v0.3 process.exec capability).
+   *
+   * <p>This method is entitled via: {@code entitle module to process.exec("/bin/echo")}
+   *
+   * @param message the message to echo
+   * @return the command output
+   */
+  public static String executeEcho(String message) {
+    try {
+      String echoPath = Files.exists(Path.of("/bin/echo")) ? "/bin/echo" : "/usr/bin/echo";
+      ProcessBuilder pb = new ProcessBuilder(echoPath, message);
+      pb.redirectErrorStream(true);
+      Process process = pb.start();
+
+      String output;
+      try (BufferedReader reader =
+          new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+        output = reader.lines().collect(Collectors.joining("\n"));
+      }
+
+      int exitCode = process.waitFor();
+      if (exitCode != 0) {
+        return "ERROR: Exit code " + exitCode;
+      }
+      return output;
+    } catch (SecurityException e) {
+      return "BLOCKED: " + e.getMessage();
+    } catch (Exception e) {
+      return "ERROR: " + e.getMessage();
+    }
+  }
+
+  /**
+   * Attempts to execute an unauthorized command (v0.3 - should be blocked).
+   *
+   * @return result message
+   */
+  public static String executeUnauthorized() {
+    try {
+      ProcessBuilder pb = new ProcessBuilder("/bin/ls", "-la");
+      pb.start();
+      return "SUCCESS (unexpected) - /bin/ls executed";
+    } catch (SecurityException e) {
+      return "BLOCKED: " + e.getMessage();
+    } catch (Exception e) {
+      return "ERROR: " + e.getMessage();
+    }
+  }
+
+  /**
+   * Creates a hard link in the build output directory (v0.3 fs.hardlink capability).
+   *
+   * <p>This method is entitled via: {@code entitle module to fs.hardlink("build/output", "**")}
+   *
+   * @param sourceName the source file name
+   * @param linkName the link name
+   * @return result message
+   */
+  public static String createHardLink(String sourceName, String linkName) {
+    try {
+      Path outputDir = Path.of("build/output");
+      Files.createDirectories(outputDir);
+
+      Path source = outputDir.resolve(sourceName);
+      if (!Files.exists(source)) {
+        Files.writeString(source, "Source file for hard link test\n");
+      }
+
+      Path link = outputDir.resolve(linkName);
+      Files.deleteIfExists(link);
+      Files.createLink(link, source);
+
+      return "Created hard link: " + link + " -> " + source;
+    } catch (SecurityException e) {
+      return "BLOCKED: " + e.getMessage();
+    } catch (Exception e) {
+      return "ERROR: " + e.getMessage();
+    }
+  }
+
+  /**
+   * Attempts to create a hard link in an unauthorized directory (v0.3 - should be blocked).
+   *
+   * @return result message
+   */
+  public static String createUnauthorizedHardLink() {
+    try {
+      Path source = Path.of("build/output/source.txt");
+      Files.createDirectories(source.getParent());
+      if (!Files.exists(source)) {
+        Files.writeString(source, "Source file\n");
+      }
+
+      Path link = Path.of("/tmp/jguard-unauthorized-link");
+      Files.deleteIfExists(link);
+      Files.createLink(link, source);
+      Files.deleteIfExists(link);
+
+      return "SUCCESS (unexpected) - hard link created in /tmp";
+    } catch (SecurityException e) {
+      return "BLOCKED: " + e.getMessage();
+    } catch (Exception e) {
+      return "ERROR: " + e.getMessage();
+    }
   }
 }

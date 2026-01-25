@@ -1,0 +1,28 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The jGuard Contributors require contributions made to
+ * this file be licensed under the Apache-2.0 license or a
+ * compatible open source license.
+ */
+
+// Trusted module override for native ML libraries.
+//
+// Native libraries like PyTorch require unrestricted access to operate.
+// A trusted module bypasses ALL capability checks - use with extreme caution.
+//
+// SECURITY WARNING:
+// - Only use for well-vetted native code that cannot function otherwise
+// - This is an escape hatch, not a general solution
+// - Requires -Djguard.allow.trusted=true to be enabled at runtime
+//
+// To use this override, compile it and place it in the policy override directory:
+//   jguardc ai.djl.pytorch.jguard
+//   cp ai.djl.pytorch.bin /etc/jguard/policies/
+
+security module ai.djl.pytorch {
+
+    // Mark this module as trusted - all capability checks are bypassed
+    trusted;
+
+}

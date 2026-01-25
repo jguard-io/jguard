@@ -73,7 +73,7 @@ class JGuardcTest {
     assertThat(jsonOutput).exists();
 
     String json = Files.readString(jsonOutput);
-    assertThat(json).contains("\"formatVersion\" : 2");
+    assertThat(json).contains("\"formatVersion\" : 3");
     assertThat(json).contains("\"moduleName\" : \"com.example.app\"");
     assertThat(json).contains("\"capability\" : \"fs.read\"");
   }

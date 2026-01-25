@@ -7,31 +7,17 @@
  */
 package io.jguard.policy.lexer;
 
-/** Token types for the jGuard policy descriptor language. */
+/**
+ * Token types for the jGuard policy descriptor language.
+ *
+ * <p>Note: All keywords (security, module, entitle, deny, to, trusted, defensive) are contextual -
+ * they tokenize as IDENTIFIER and the parser checks their values in context. This allows package
+ * names like "com.example.security" or "com.example.module.to".
+ */
 public enum TokenType {
-  // Keywords
-
-  /** The 'security' keyword. */
-  SECURITY,
-
-  /** The 'module' keyword. */
-  MODULE,
-
-  /** The 'entitle' keyword. */
-  ENTITLE,
-
-  /** The 'deny' keyword. */
-  DENY,
-
-  /** The 'defensive' keyword (used with deny). */
-  DEFENSIVE,
-
-  /** The 'to' keyword. */
-  TO,
-
   // Literals
 
-  /** An identifier (e.g., 'org', 'jguard', 'fs'). */
+  /** An identifier (e.g., 'org', 'jguard', 'fs', and contextual keywords). */
   IDENTIFIER,
 
   /** A string literal (e.g., "/tmp"). */

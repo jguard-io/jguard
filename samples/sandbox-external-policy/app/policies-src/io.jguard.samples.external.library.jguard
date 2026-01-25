@@ -33,6 +33,19 @@ security module io.jguard.samples.external.library {
     deny module to threads.create;
 
     // ========================================================================
+    // DENY: v0.3 dangerous capabilities
+    // ========================================================================
+
+    // DENY process.exec - Shell escapes are too dangerous to allow.
+    deny module to process.exec;
+
+    // DENY fs.hardlink - Could be used to escape filesystem boundaries.
+    deny module to fs.hardlink("/", "**");
+
+    // DENY crypto.provider - Could install malicious crypto providers.
+    deny module to crypto.provider;
+
+    // ========================================================================
     // ALLOW: Keep legitimate capabilities (no change needed)
     // ========================================================================
 

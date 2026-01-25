@@ -200,6 +200,23 @@ public final class BootstrapEnforcer {
     dispatch(Operation.FS_WRITE, path, 0);
   }
 
+  // ========== FILESYSTEM HARD LINK ENTRY POINTS ==========
+
+  /**
+   * Called by ByteBuddy advice when a hard link creation is intercepted.
+   *
+   * <p>The link path is checked against {@code fs.hardlink} entitlements. Note that creating a hard
+   * link also implicitly requires {@code fs.read} on the existing file (to read its data) and
+   * {@code fs.write} on the link's parent directory (to create the directory entry).
+   *
+   * @param link the link path being created
+   * @param existing the existing file path being linked to
+   */
+  public static void onHardLink(Path link, Path existing) {
+    // Check fs.hardlink on the link destination
+    dispatch(Operation.FS_HARDLINK, link, 0);
+  }
+
   // ========== NETWORK OUTBOUND ENTRY POINTS ==========
 
   /**
@@ -310,6 +327,32 @@ public final class BootstrapEnforcer {
    */
   public static void onPropertyWrite(String key) {
     dispatch(Operation.PROP_WRITE, key, 0);
+  }
+
+  // ========== PROCESS EXECUTION ENTRY POINTS ==========
+
+  /**
+   * Called by ByteBuddy advice when a process execution is intercepted.
+   *
+   * <p>Guards {@code Runtime.exec()} and {@code ProcessBuilder.start()}.
+   *
+   * @param command the command being executed (first element of command array, or the command
+   *     string)
+   */
+  public static void onProcessExec(String command) {
+    dispatch(Operation.PROCESS_EXEC, command, 0);
+  }
+
+  // ========== CRYPTO PROVIDER ENTRY POINTS ==========
+
+  /**
+   * Called by ByteBuddy advice when a crypto provider operation is intercepted.
+   *
+   * <p>Guards {@code Security.addProvider()}, {@code Security.insertProviderAt()}, {@code
+   * Security.removeProvider()}, and {@code Security.setProperty()}.
+   */
+  public static void onCryptoProvider() {
+    dispatch(Operation.CRYPTO_PROVIDER, null, 0);
   }
 
   // ========== SINGLE DISPATCH ==========

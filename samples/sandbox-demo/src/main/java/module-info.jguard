@@ -48,4 +48,18 @@ security module io.jguard.samples.sandbox {
     // The .config package can write properties matching "app.**" (any depth)
     entitle io.jguard.samples.sandbox.config to system.property.write("app.**");
 
+    // ========== New v0.3 Capabilities ==========
+
+    // Grant process execution to specific package with restricted command
+    // Only allows running /bin/echo or /usr/bin/echo
+    entitle io.jguard.samples.sandbox.process to process.exec("/bin/echo");
+    entitle io.jguard.samples.sandbox.process to process.exec("/usr/bin/echo");
+
+    // Grant hard link creation to specific package within build directory
+    entitle io.jguard.samples.sandbox.fs to fs.hardlink("build/test-output", "**");
+
+    // Grant crypto provider modification to security package
+    // Note: Package name contains "security" to demonstrate contextual keywords work
+    entitle io.jguard.samples.sandbox.security to crypto.provider;
+
 }

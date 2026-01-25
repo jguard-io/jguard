@@ -35,6 +35,7 @@ public final class BinaryPolicyReader {
   private static final byte[] MAGIC = {'J', 'G', 'R', 'D'};
   private static final byte FORMAT_VERSION_V1 = 1;
   private static final byte FORMAT_VERSION_V2 = 2;
+  private static final byte FORMAT_VERSION_V3 = 3;
 
   private static final byte SUBJECT_MODULE = 0;
   private static final byte SUBJECT_EXACT = 1;
@@ -100,6 +101,7 @@ public final class BinaryPolicyReader {
     return switch (version) {
       case FORMAT_VERSION_V1 -> readV1AsApplicationPolicy(dis);
       case FORMAT_VERSION_V2 -> readV2ApplicationPolicy(dis);
+      case FORMAT_VERSION_V3 -> readV3ApplicationPolicy(dis);
       default -> throw new IOException("Unsupported policy format version: " + version);
     };
   }
@@ -114,22 +116,42 @@ public final class BinaryPolicyReader {
   }
 
   private static ApplicationPolicy readV2ApplicationPolicy(DataInputStream dis) throws IOException {
-    // V2 format: multiple modules
+    // V2 format: multiple modules (no trusted flag)
     int moduleCount = dis.readUnsignedShort();
     List<ModulePolicy> modules = new ArrayList<>(moduleCount);
 
     for (int i = 0; i < moduleCount; i++) {
-      modules.add(readModule(dis));
+      modules.add(readModuleV2(dis));
     }
 
     return new ApplicationPolicy(ApplicationPolicy.FORMAT_VERSION, modules);
   }
 
-  private static ModulePolicy readModule(DataInputStream dis) throws IOException {
+  private static ApplicationPolicy readV3ApplicationPolicy(DataInputStream dis) throws IOException {
+    // V3 format: multiple modules with trusted flag
+    int moduleCount = dis.readUnsignedShort();
+    List<ModulePolicy> modules = new ArrayList<>(moduleCount);
+
+    for (int i = 0; i < moduleCount; i++) {
+      modules.add(readModuleV3(dis));
+    }
+
+    return new ApplicationPolicy(ApplicationPolicy.FORMAT_VERSION, modules);
+  }
+
+  private static ModulePolicy readModuleV2(DataInputStream dis) throws IOException {
     String moduleName = readString(dis);
     List<Entitlement> entitlements = readEntitlements(dis);
     List<Denial> denials = readDenials(dis);
-    return new ModulePolicy(moduleName, entitlements, denials);
+    return new ModulePolicy(moduleName, entitlements, denials, false);
+  }
+
+  private static ModulePolicy readModuleV3(DataInputStream dis) throws IOException {
+    String moduleName = readString(dis);
+    boolean trusted = dis.readByte() != 0;
+    List<Entitlement> entitlements = readEntitlements(dis);
+    List<Denial> denials = readDenials(dis);
+    return new ModulePolicy(moduleName, entitlements, denials, trusted);
   }
 
   private static List<Entitlement> readEntitlements(DataInputStream dis) throws IOException {

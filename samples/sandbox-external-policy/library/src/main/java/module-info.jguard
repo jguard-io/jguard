@@ -34,4 +34,18 @@ security module io.jguard.samples.external.library {
     // Legitimate: system property read
     entitle module to system.property.read;
 
+    // ========== v0.3 Capabilities (OVERLY PERMISSIVE) ==========
+
+    // OVERLY PERMISSIVE: Grants process.exec for any command
+    // This is a significant security risk!
+    entitle module to process.exec;
+
+    // OVERLY PERMISSIVE: Grants fs.hardlink anywhere (using root and wildcard)
+    // This could be used to escape filesystem boundaries
+    entitle module to fs.hardlink("/", "**");
+
+    // OVERLY PERMISSIVE: Grants crypto.provider
+    // Allows installing malicious crypto providers
+    entitle module to crypto.provider;
+
 }

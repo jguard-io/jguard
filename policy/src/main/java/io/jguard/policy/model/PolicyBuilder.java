@@ -38,6 +38,12 @@ public final class PolicyBuilder {
    */
   public static PolicyDescriptor build(PolicyFile ast) {
     String moduleName = ast.moduleNameString();
+
+    // Handle trusted modules
+    if (ast.trusted()) {
+      return PolicyDescriptor.trusted(moduleName);
+    }
+
     List<Entitlement> entitlements = new ArrayList<>();
     List<Denial> denials = new ArrayList<>();
 

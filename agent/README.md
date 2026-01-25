@@ -242,6 +242,7 @@ The following capabilities are fully enforced:
 
 - `fs.read(root, glob)` — filesystem read operations
 - `fs.write(root, glob)` — filesystem write operations
+- `fs.hardlink(root, glob)` — hard link creation (v0.3+)
 - `network.outbound(hostPattern?, portSpec?)` — outbound socket connections with optional host/port filtering
 - `network.listen(portSpec?)` — server socket binding with optional port or port range
 - `threads.create` — thread creation
@@ -249,6 +250,14 @@ The following capabilities are fully enforced:
 - `env.read(pattern?)` — environment variable read access
 - `system.property.read(pattern?)` — system property read access
 - `system.property.write(pattern?)` — system property write access
+- `process.exec(pattern?)` — process execution (v0.3+)
+- `crypto.provider` — JCE crypto provider modification (v0.3+)
+
+### Trusted Modules (v0.3+)
+
+Modules can be marked as "trusted" in external policy overrides to bypass all capability checks.
+This is intended for native libraries like PyTorch that require unrestricted access.
+Requires `-Djguard.allow.trusted=true` system property.
 
 **Host patterns** for `network.outbound`:
 - `*` matches exactly one DNS segment (e.g., `*.example.com` matches `api.example.com`)

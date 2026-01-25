@@ -176,7 +176,7 @@ class DeterminismTest {
 
     String json = JsonPolicyWriter.toJson(result.policy());
 
-    assertThat(json).contains("\"formatVersion\" : 2");
+    assertThat(json).contains("\"formatVersion\" : 3");
     assertThat(json).contains("\"moduleName\" : \"com.example.app\"");
     assertThat(json).contains("\"entitlements\"");
     assertThat(json).contains("\"capability\" : \"fs.read\"");

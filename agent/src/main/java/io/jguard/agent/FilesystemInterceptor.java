@@ -158,4 +158,34 @@ public final class FilesystemInterceptor {
       BootstrapEnforcer.onFileWrite(path);
     }
   }
+
+  // ========== HARD LINK ADVICE CLASSES ==========
+
+  /**
+   * Advice for Files.createLink(Path link, Path existing).
+   *
+   * <p>Hard link creation allows creating a new directory entry pointing to an existing file. This
+   * requires special permission because it can bypass filesystem boundaries by linking to files
+   * outside the permitted write paths.
+   *
+   * <p>Note: Creating a hard link also implicitly requires fs.read on the existing file (to verify
+   * it exists) and fs.write on the link's parent directory (to create the directory entry). These
+   * are checked separately by the JDK implementation.
+   */
+  public static class HardLinkAdvice {
+
+    private HardLinkAdvice() {}
+
+    /**
+     * Intercepts method entry to enforce fs.hardlink policy.
+     *
+     * @param link the link path being created
+     * @param existing the existing file path being linked to
+     */
+    @Advice.OnMethodEnter
+    public static void onEnter(@Advice.Argument(0) Path link, @Advice.Argument(1) Path existing) {
+      // ONLY reference BootstrapEnforcer - it's injected into bootstrap classloader
+      BootstrapEnforcer.onHardLink(link, existing);
+    }
+  }
 }

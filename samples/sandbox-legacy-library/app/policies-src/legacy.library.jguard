@@ -32,5 +32,10 @@ security module legacy.library {
     // - network.outbound (library cannot phone home)
     // - threads.create (library cannot spawn threads)
     // - native.load (library cannot load native code)
+    //
+    // v0.3 capabilities - also NOT granted (restrictive by default):
+    // - process.exec (library cannot execute commands)
+    // - fs.hardlink (library cannot create hard links)
+    // - crypto.provider (library cannot install crypto providers)
 
 }

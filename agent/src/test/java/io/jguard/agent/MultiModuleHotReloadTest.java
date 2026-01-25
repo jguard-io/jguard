@@ -600,9 +600,16 @@ class MultiModuleHotReloadTest {
     return switch (op) {
       case FS_READ -> enforcer.check(caller, op, testFile, 0);
       case FS_WRITE -> enforcer.check(caller, op, testFile, 0);
+      case FS_HARDLINK -> enforcer.check(caller, op, testFile, 0);
       case NET_CONNECT -> enforcer.check(caller, op, "example.com", 80);
       case NET_LISTEN -> enforcer.check(caller, op, 8080, 0);
-      case THREAD_CREATE, NATIVE_LOAD, ENV_READ, PROP_READ, PROP_WRITE ->
+      case THREAD_CREATE,
+          NATIVE_LOAD,
+          ENV_READ,
+          PROP_READ,
+          PROP_WRITE,
+          PROCESS_EXEC,
+          CRYPTO_PROVIDER ->
           enforcer.check(caller, op, "test", 0);
     };
   }

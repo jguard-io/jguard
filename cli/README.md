@@ -436,6 +436,7 @@ The compiler validates that only known capabilities are used:
 |------------|-----------|-------------|
 | `fs.read` | `(root, glob)` | Read files matching glob under root |
 | `fs.write` | `(root, glob)` | Write files matching glob under root |
+| `fs.hardlink` | `(root, glob)` | Create hard links matching glob under root |
 | `network.outbound` | `(hostPattern?, portSpec?)` | Open outbound network connections |
 | `network.listen` | `(portSpec?)` | Bind server sockets |
 | `threads.create` | none | Create new threads |
@@ -443,6 +444,8 @@ The compiler validates that only known capabilities are used:
 | `env.read` | `(pattern?)` | Read environment variables |
 | `system.property.read` | `(pattern?)` | Read system properties |
 | `system.property.write` | `(pattern?)` | Write system properties |
+| `process.exec` | `(pattern?)` | Execute external processes |
+| `crypto.provider` | none | Modify JCE crypto providers |
 
 ### Argument Details
 

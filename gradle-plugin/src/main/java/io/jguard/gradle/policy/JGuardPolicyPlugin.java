@@ -388,6 +388,13 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                       }
                     }
 
+                    // Add trusted module configuration
+                    boolean allowTrusted =
+                        Boolean.TRUE.equals(extension.getAllowTrusted().getOrNull());
+                    if (allowTrusted) {
+                      jvmArgs.add("-Djguard.allow.trusted=true");
+                    }
+
                     task.setJvmArgs(jvmArgs);
 
                     project.getLogger().lifecycle("Running with jGuard agent...");
@@ -409,6 +416,12 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                               "  Hot reload: enabled (interval="
                                   + (interval != null ? interval : 5)
                                   + "s)");
+                    }
+                    if (allowTrusted) {
+                      project
+                          .getLogger()
+                          .warn(
+                              "  Trusted modules: ENABLED (security warning: trusted modules bypass all checks)");
                     }
                   });
             });
@@ -513,6 +526,9 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
         .getExternalPoliciesOutputDir()
         .convention(project.getLayout().getBuildDirectory().dir("external-policies"));
     extension.getExternalPoliciesIncludeJson().convention(false);
+
+    // Trusted module defaults
+    extension.getAllowTrusted().convention(false);
 
     // Hot reload defaults
     extension.getHotReload().convention(false);

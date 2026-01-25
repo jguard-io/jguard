@@ -264,7 +264,14 @@ public final class AgentInitializer {
                             .on(named("delete").and(takesArgument(0, Path.class))))
                     .visit(
                         Advice.to(FilesystemInterceptor.WritePathAdvice.class)
-                            .on(named("deleteIfExists").and(takesArgument(0, Path.class)))))
+                            .on(named("deleteIfExists").and(takesArgument(0, Path.class))))
+                    // Hard link creation (fs.hardlink)
+                    .visit(
+                        Advice.to(FilesystemInterceptor.HardLinkAdvice.class)
+                            .on(
+                                named("createLink")
+                                    .and(takesArgument(0, Path.class))
+                                    .and(takesArgument(1, Path.class)))))
         // Instrument java.io.FileInputStream - legacy IO API
         .type(named("java.io.FileInputStream"))
         .transform(
@@ -468,17 +475,101 @@ public final class AgentInitializer {
                     .visit(
                         Advice.to(PropertyInterceptor.ClearPropertyAdvice.class)
                             .on(named("clearProperty").and(takesArgument(0, String.class)))))
-        // Instrument java.lang.Runtime - native library loading (delegates to System)
+        // Instrument java.lang.Runtime - native library loading and process execution
         .type(named("java.lang.Runtime"))
         .transform(
             (builder, typeDescription, classLoader, module, protectionDomain) ->
                 builder
+                    // Native library loading
                     .visit(
                         Advice.to(NativeInterceptor.LoadLibraryAdvice.class)
                             .on(named("loadLibrary").and(takesArgument(0, String.class))))
                     .visit(
                         Advice.to(NativeInterceptor.LoadAdvice.class)
-                            .on(named("load").and(takesArgument(0, String.class)))))
+                            .on(named("load").and(takesArgument(0, String.class))))
+                    // ========== PROCESS EXECUTION (process.exec) ==========
+                    // Runtime.exec(String) - single command string
+                    .visit(
+                        Advice.to(ProcessInterceptor.ExecStringAdvice.class)
+                            .on(
+                                named("exec")
+                                    .and(takesArgument(0, String.class))
+                                    .and(takesArguments(1))))
+                    // Runtime.exec(String, String[]) - command with env
+                    .visit(
+                        Advice.to(ProcessInterceptor.ExecStringAdvice.class)
+                            .on(
+                                named("exec")
+                                    .and(takesArgument(0, String.class))
+                                    .and(takesArgument(1, String[].class))
+                                    .and(takesArguments(2))))
+                    // Runtime.exec(String, String[], File) - command with env and dir
+                    .visit(
+                        Advice.to(ProcessInterceptor.ExecStringAdvice.class)
+                            .on(
+                                named("exec")
+                                    .and(takesArgument(0, String.class))
+                                    .and(takesArgument(1, String[].class))
+                                    .and(takesArgument(2, java.io.File.class))))
+                    // Runtime.exec(String[]) - command array
+                    .visit(
+                        Advice.to(ProcessInterceptor.ExecArrayAdvice.class)
+                            .on(
+                                named("exec")
+                                    .and(takesArgument(0, String[].class))
+                                    .and(takesArguments(1))))
+                    // Runtime.exec(String[], String[]) - command array with env
+                    .visit(
+                        Advice.to(ProcessInterceptor.ExecArrayAdvice.class)
+                            .on(
+                                named("exec")
+                                    .and(takesArgument(0, String[].class))
+                                    .and(takesArgument(1, String[].class))
+                                    .and(takesArguments(2))))
+                    // Runtime.exec(String[], String[], File) - command array with env and dir
+                    .visit(
+                        Advice.to(ProcessInterceptor.ExecArrayAdvice.class)
+                            .on(
+                                named("exec")
+                                    .and(takesArgument(0, String[].class))
+                                    .and(takesArgument(1, String[].class))
+                                    .and(takesArgument(2, java.io.File.class)))))
+        // ========== PROCESS BUILDER INSTRUMENTATION (process.exec) ==========
+        .type(named("java.lang.ProcessBuilder"))
+        .transform(
+            (builder, typeDescription, classLoader, module, protectionDomain) ->
+                builder.visit(
+                    Advice.to(ProcessInterceptor.ProcessBuilderStartAdvice.class)
+                        .on(named("start").and(takesNoArguments()))))
+        // ========== CRYPTO PROVIDER INSTRUMENTATION (crypto.provider) ==========
+        .type(named("java.security.Security"))
+        .transform(
+            (builder, typeDescription, classLoader, module, protectionDomain) ->
+                builder
+                    // Security.addProvider(Provider)
+                    .visit(
+                        Advice.to(SecurityInterceptor.ProviderModificationAdvice.class)
+                            .on(
+                                named("addProvider")
+                                    .and(takesArgument(0, java.security.Provider.class))))
+                    // Security.insertProviderAt(Provider, int)
+                    .visit(
+                        Advice.to(SecurityInterceptor.ProviderModificationAdvice.class)
+                            .on(
+                                named("insertProviderAt")
+                                    .and(takesArgument(0, java.security.Provider.class))
+                                    .and(takesArgument(1, int.class))))
+                    // Security.removeProvider(String)
+                    .visit(
+                        Advice.to(SecurityInterceptor.ProviderModificationAdvice.class)
+                            .on(named("removeProvider").and(takesArgument(0, String.class))))
+                    // Security.setProperty(String, String)
+                    .visit(
+                        Advice.to(SecurityInterceptor.ProviderModificationAdvice.class)
+                            .on(
+                                named("setProperty")
+                                    .and(takesArgument(0, String.class))
+                                    .and(takesArgument(1, String.class)))))
         .installOn(inst);
 
     LOG.debug("Instrumentation installed");

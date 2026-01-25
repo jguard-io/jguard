@@ -18,12 +18,14 @@ import java.util.Objects;
  * @param moduleName the module name segments (e.g., ["org", "jguard", "samples"])
  * @param entitlements the entitlement declarations
  * @param denials the deny declarations
+ * @param trusted whether this module is marked as trusted (all capability checks bypassed)
  * @param location the source location of the 'security' keyword
  */
 public record PolicyFile(
     List<String> moduleName,
     List<EntitlementDeclaration> entitlements,
     List<DenyDeclaration> denials,
+    boolean trusted,
     SourceLocation location) {
 
   /** Compact constructor that validates and normalizes the record fields. */
@@ -41,7 +43,7 @@ public record PolicyFile(
   }
 
   /**
-   * Backwards-compatible constructor for policy files without denials.
+   * Backwards-compatible constructor for policy files without denials and not trusted.
    *
    * @param moduleName the module name segments
    * @param entitlements the entitlement declarations
@@ -49,7 +51,23 @@ public record PolicyFile(
    */
   public PolicyFile(
       List<String> moduleName, List<EntitlementDeclaration> entitlements, SourceLocation location) {
-    this(moduleName, entitlements, List.of(), location);
+    this(moduleName, entitlements, List.of(), false, location);
+  }
+
+  /**
+   * Backwards-compatible constructor for policy files without trusted flag.
+   *
+   * @param moduleName the module name segments
+   * @param entitlements the entitlement declarations
+   * @param denials the deny declarations
+   * @param location the source location
+   */
+  public PolicyFile(
+      List<String> moduleName,
+      List<EntitlementDeclaration> entitlements,
+      List<DenyDeclaration> denials,
+      SourceLocation location) {
+    this(moduleName, entitlements, denials, false, location);
   }
 
   /**
@@ -65,6 +83,9 @@ public record PolicyFile(
   public String toString() {
     StringBuilder sb = new StringBuilder();
     sb.append("security module ").append(moduleNameString()).append(" {\n");
+    if (trusted) {
+      sb.append("    trusted;\n");
+    }
     for (EntitlementDeclaration e : entitlements) {
       sb.append("    ").append(e).append("\n");
     }
