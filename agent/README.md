@@ -72,6 +72,7 @@ This separation enables:
 | `jguard.discovery` | true/false | **true** | Auto-discover policies from signed JARs |
 | `jguard.allowUnsignedPolicies` | true/false | false | Allow unsigned JAR policies (dev only!) |
 | `jguard.policy.override` | path | — | Directory for policy override files |
+| `jguard.bootstrap.cache.dir` | path | ~/.cache/jguard | Bootstrap JAR cache directory |
 
 ### Enforcement Modes
 
@@ -467,7 +468,51 @@ External policy files are included in hot reload. Update a policy file and chang
 The agent is designed for production use with:
 
 - **Robust Bootstrap Injection**: Uses `appendToBootstrapClassLoaderSearch()` with a properly packaged bootstrap JAR
+- **Bootstrap JAR Caching**: Optimizes startup for environments with multiple JVMs (see below)
 - **Built-in Logging**: Simple console logger with no external dependencies
 - **Graceful Error Handling**: Configurable behavior for errors and edge cases
 - **Shadow JAR Isolation**: ByteBuddy and ASM are relocated to avoid classpath conflicts
 - **Policy Hot Reload**: Update entitlements without JVM restart
+
+### Bootstrap JAR Caching
+
+The agent extracts a bootstrap JAR at startup to inject classes into the bootstrap classloader. To optimize performance in test environments and containerized deployments with multiple JVMs, the extracted bootstrap JAR is cached by version.
+
+**Cache Location (Default):**
+- Unix/macOS: `~/.cache/jguard/jguard-bootstrap-<version>.jar`
+- Windows: `%LOCALAPPDATA%/jguard/cache/jguard-bootstrap-<version>.jar`
+- XDG-compliant: `$XDG_CACHE_HOME/jguard/jguard-bootstrap-<version>.jar`
+
+**Custom Cache Location:**
+
+The cache directory can be configured via the `jguard.bootstrap.cache.dir` system property:
+
+```bash
+# Test environments (cleanup with test artifacts)
+java -Djguard.bootstrap.cache.dir=build/testrun/cluster1/jguard-cache \
+     -javaagent:jguard-agent.jar -jar myapp.jar
+
+# Production environments (managed directory)
+java -Djguard.bootstrap.cache.dir=/var/cache/jguard \
+     -javaagent:jguard-agent.jar -jar myapp.jar
+```
+
+**Security Protections:**
+- User-specific cache directory by default (not shared `/tmp`)
+- Symlink rejection (prevents symlink attacks)
+- File ownership validation (must be owned by current user)
+- Permission validation (rejects world-writable files)
+- Secure permissions on new files (600 for files, 700 for directories)
+
+**Fallback Behavior:**
+
+If caching fails for any reason (permissions, disk full, etc.), the agent falls back to the original per-JVM temp file approach with no functional impact.
+
+**Cache Management:**
+
+The cache file can be safely deleted to force re-extraction:
+```bash
+rm ~/.cache/jguard/jguard-bootstrap-*.jar
+```
+
+Different jGuard versions use different cache files, so upgrading doesn't require manual cache clearing.

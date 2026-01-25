@@ -19,6 +19,12 @@ security module io.jguard.samples.sandbox {
     // The .net package can connect to any host/port
     entitle io.jguard.samples.sandbox.net to network.outbound;
 
+    // The .net package needs fs.read for JDK security config files
+    // (JDK reads java.security during network class initialization)
+    // Using narrower paths than root for better security
+    entitle io.jguard.samples.sandbox.net to fs.read("/usr", "**");
+    entitle io.jguard.samples.sandbox.net to fs.read("/Library", "**");
+
     // The .net.restricted subpackage can ONLY connect to *.example.com on ports 80-443
     // This demonstrates host glob pattern + port range filtering
     entitle io.jguard.samples.sandbox.net.restricted to network.outbound("*.example.com", "80-443");
