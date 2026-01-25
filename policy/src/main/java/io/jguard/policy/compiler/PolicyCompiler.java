@@ -78,10 +78,11 @@ public final class PolicyCompiler {
     // Ensure output directories exist
     Files.createDirectories(binOutput.getParent());
 
-    // Write binary output using V2 format (supports entitlements and denials)
+    // Write binary output using V3 format (supports entitlements, denials, and trusted)
     try (OutputStream out = Files.newOutputStream(binOutput)) {
       ModulePolicy modulePolicy =
-          new ModulePolicy(policy.moduleName(), policy.entitlements(), policy.denials());
+          new ModulePolicy(
+              policy.moduleName(), policy.entitlements(), policy.denials(), policy.trusted());
       ApplicationPolicy appPolicy = ApplicationPolicy.single(modulePolicy);
       BinaryPolicyWriter.write(appPolicy, out);
     }

@@ -18,10 +18,19 @@ security module _global {
     // DENY native library loading for ALL modules.
     // This is a significant security risk and should be explicitly allowed
     // only when absolutely necessary and properly audited.
-    deny module to native.load;
+    deny(defensive) module to native.load;
 
     // DENY writing system properties for ALL modules.
     // Use defensive deny to suppress warning if not already granted.
     deny(defensive) module to system.property.write;
+
+    // DENY process execution for ALL modules.
+    // Process execution (Runtime.exec, ProcessBuilder.start) is a common
+    // attack vector for shell escapes and command injection.
+    deny(defensive) module to process.exec;
+
+    // DENY crypto provider modifications for ALL modules.
+    // Prevents rogue cryptographic providers from being installed.
+    deny(defensive) module to crypto.provider;
 
 }

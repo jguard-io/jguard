@@ -3,7 +3,8 @@
  *
  * jGuard policy for the core module.
  *
- * This module can read configuration files from the "config" directory.
+ * This module can read configuration files from the "config" directory,
+ * execute specific processes, and create hard links in build output.
  */
 security module io.jguard.samples.multimodule.core {
   // Allow reading config files
@@ -11,4 +12,14 @@ security module io.jguard.samples.multimodule.core {
 
   // Allow reading from current directory (for demo purposes)
   entitle module to fs.read(".", "*.txt");
+
+  // Allow writing to build output directory
+  entitle module to fs.write("build/output", "**");
+
+  // v0.3: Allow process execution for config validation (echo only)
+  entitle module to process.exec("/bin/echo");
+  entitle module to process.exec("/usr/bin/echo");
+
+  // v0.3: Allow hard link creation in build output directory
+  entitle module to fs.hardlink("build/output", "**");
 }

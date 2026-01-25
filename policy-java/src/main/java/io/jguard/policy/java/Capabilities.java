@@ -65,6 +65,24 @@ public final class Capabilities {
         List.of(new CapabilityArgument.StringArg(root), new CapabilityArgument.StringArg(glob)));
   }
 
+  /**
+   * Creates a filesystem hard link capability.
+   *
+   * <p>Hard link creation allows creating a new directory entry pointing to an existing file. This
+   * requires special permission because it can bypass filesystem boundaries.
+   *
+   * @param root the root directory path for link destinations
+   * @param glob the glob pattern for matching link paths
+   * @return the capability grant
+   */
+  public static CapabilityGrant fsHardlink(String root, String glob) {
+    validateNotNull(root, "root");
+    validateNotNull(glob, "glob");
+    return CapabilityGrant.of(
+        "fs.hardlink",
+        List.of(new CapabilityArgument.StringArg(root), new CapabilityArgument.StringArg(glob)));
+  }
+
   // ===== Network Capabilities =====
 
   /**
@@ -109,6 +127,47 @@ public final class Capabilities {
    */
   public static CapabilityGrant nativeLoad() {
     return CapabilityGrant.of("native.load");
+  }
+
+  // ===== Process Capabilities =====
+
+  /**
+   * Creates a process execution capability allowing any command.
+   *
+   * <p><b>Security Warning:</b> This grants unrestricted process execution. Consider using {@link
+   * #processExec(String)} with a pattern to limit allowed commands.
+   *
+   * @return the capability grant
+   */
+  public static CapabilityGrant processExec() {
+    return CapabilityGrant.of("process.exec");
+  }
+
+  /**
+   * Creates a process execution capability with a command pattern.
+   *
+   * <p>The pattern matches the first element of the command (the executable path or name).
+   *
+   * @param pattern the command pattern (e.g., "/usr/bin/java", "/opt/app/bin/*")
+   * @return the capability grant
+   */
+  public static CapabilityGrant processExec(String pattern) {
+    validateNotNull(pattern, "pattern");
+    return CapabilityGrant.of("process.exec", List.of(new CapabilityArgument.StringArg(pattern)));
+  }
+
+  // ===== Crypto Capabilities =====
+
+  /**
+   * Creates a crypto provider capability.
+   *
+   * <p>This grants permission to modify Java crypto providers (add, remove, configure). Required
+   * for installing custom cryptographic providers like BouncyCastle.
+   *
+   * @return the capability grant
+   */
+  public static CapabilityGrant cryptoProvider() {
+    return CapabilityGrant.of("crypto.provider");
   }
 
   // ===== Validation =====

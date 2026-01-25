@@ -99,13 +99,59 @@ public final class Main {
     System.out.println();
 
     // ====================================================================
+    // v0.3 Test 6: Process Execution (DANGEROUS!)
+    // ====================================================================
+    section("v0.3: Process Execution (DANGEROUS!)");
+    System.out.println("The library's embedded policy grants process.exec to the ENTIRE module.");
+    System.out.println("This could allow shell escapes - external policy SHOULD deny this!");
+    System.out.println();
+
+    PermissiveLibrary.tryExecuteProcess("/bin/echo Hello from library");
+    System.out.println();
+
+    // ====================================================================
+    // v0.3 Test 7: Hard Link Creation (DANGEROUS!)
+    // ====================================================================
+    section("v0.3: Hard Link Creation (DANGEROUS!)");
+    System.out.println("The library's embedded policy grants fs.hardlink to the ENTIRE module.");
+    System.out.println("This could escape filesystem boundaries - external policy SHOULD deny this!");
+    System.out.println();
+
+    // Create a temp source file for the test
+    try {
+      Path tempFile = java.nio.file.Files.createTempFile("jguard-test", ".txt");
+      java.nio.file.Files.writeString(tempFile, "Test content");
+      Path linkPath = tempFile.resolveSibling("jguard-test-link.txt");
+      PermissiveLibrary.tryCreateHardLink(tempFile, linkPath);
+      java.nio.file.Files.deleteIfExists(tempFile);
+    } catch (Exception e) {
+      System.out.println("  [App] Could not set up test: " + e.getMessage());
+    }
+    System.out.println();
+
+    // ====================================================================
+    // v0.3 Test 8: Crypto Provider (DANGEROUS!)
+    // ====================================================================
+    section("v0.3: Crypto Provider Modification (DANGEROUS!)");
+    System.out.println("The library's embedded policy grants crypto.provider to the ENTIRE module.");
+    System.out.println("This could install malicious crypto - external policy SHOULD deny this!");
+    System.out.println();
+
+    PermissiveLibrary.tryAddCryptoProvider();
+    System.out.println();
+
+    // ====================================================================
     // Summary
     // ====================================================================
     section("Summary");
     System.out.println("Check the output above to see which operations were allowed/blocked.");
     System.out.println();
     System.out.println("With external policies enabled:");
-    System.out.println("  - native.load should be BLOCKED (global + module policy deny it)");
+    System.out.println("  - native.load should be BLOCKED (external policy denies it)");
+    System.out.println("  - threads.create should be BLOCKED (external policy denies it)");
+    System.out.println("  - process.exec should be BLOCKED (v0.3 - external policy denies it)");
+    System.out.println("  - fs.hardlink should be BLOCKED (v0.3 - external policy denies it)");
+    System.out.println("  - crypto.provider should be BLOCKED (v0.3 - external policy denies it)");
     System.out.println("  - Legitimate operations (fs.read, property.read) should be allowed");
     System.out.println();
     System.out.println("=".repeat(70));

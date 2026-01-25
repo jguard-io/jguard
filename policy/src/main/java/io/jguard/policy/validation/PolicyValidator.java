@@ -40,14 +40,17 @@ public final class PolicyValidator {
   private static final Pattern JAVA_IDENTIFIER = Pattern.compile("^[a-zA-Z_][a-zA-Z0-9_]*$");
 
   // Known capabilities and their expected argument counts
-  // Capabilities: fs.read/write, network.outbound/listen, threads.create, native.load,
-  // env.read, system.property.read/write
+  // Capabilities: fs.read/write/hardlink, network.outbound/listen, threads.create, native.load,
+  // env.read, system.property.read/write, process.exec, crypto.provider
   private static final Map<String, CapabilitySignature> KNOWN_CAPABILITIES =
       Map.ofEntries(
           Map.entry(
               "fs.read", new CapabilitySignature(2, 2, List.of(ArgType.STRING, ArgType.STRING))),
           Map.entry(
               "fs.write", new CapabilitySignature(2, 2, List.of(ArgType.STRING, ArgType.STRING))),
+          Map.entry(
+              "fs.hardlink",
+              new CapabilitySignature(2, 2, List.of(ArgType.STRING, ArgType.STRING))),
           Map.entry(
               "network.outbound",
               new CapabilitySignature(0, 2, List.of(ArgType.STRING, ArgType.STRING_OR_INTEGER))),
@@ -58,7 +61,9 @@ public final class PolicyValidator {
           Map.entry("env.read", new CapabilitySignature(0, 1, List.of(ArgType.STRING))),
           Map.entry("system.property.read", new CapabilitySignature(0, 1, List.of(ArgType.STRING))),
           Map.entry(
-              "system.property.write", new CapabilitySignature(0, 1, List.of(ArgType.STRING))));
+              "system.property.write", new CapabilitySignature(0, 1, List.of(ArgType.STRING))),
+          Map.entry("process.exec", new CapabilitySignature(0, 1, List.of(ArgType.STRING))),
+          Map.entry("crypto.provider", new CapabilitySignature(0, 0, List.of())));
 
   private final String sourcePath;
   private final List<CompilationResult.Diagnostic> diagnostics = new ArrayList<>();
@@ -252,6 +257,7 @@ public final class PolicyValidator {
       case "system.property.read" -> validateTargetPattern(name, args, location);
       case "system.property.write" -> validateTargetPattern(name, args, location);
       case "native.load" -> validateTargetPattern(name, args, location);
+      case "process.exec" -> validateTargetPattern(name, args, location);
       default -> {
         // Other capabilities don't need semantic validation yet
       }

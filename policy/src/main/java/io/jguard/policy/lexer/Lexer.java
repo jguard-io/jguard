@@ -18,14 +18,10 @@ import java.util.Map;
  */
 public final class Lexer {
 
-  private static final Map<String, TokenType> KEYWORDS =
-      Map.of(
-          "security", TokenType.SECURITY,
-          "module", TokenType.MODULE,
-          "entitle", TokenType.ENTITLE,
-          "deny", TokenType.DENY,
-          "defensive", TokenType.DEFENSIVE,
-          "to", TokenType.TO);
+  // All keywords are contextual - they are valid as identifiers in package/capability names.
+  // The parser checks identifier values in positions where keywords are expected.
+  // This allows package names like "com.example.security" or "com.example.module.to".
+  private static final Map<String, TokenType> KEYWORDS = Map.of();
 
   private final String source;
   private final String sourcePath;

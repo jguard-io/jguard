@@ -119,6 +119,10 @@ jguardPolicy {
 
     // External policies output directory (compiled .bin files)
     externalPoliciesOutputDir = file("policies")
+
+    // Allow trusted modules (default: false)
+    // WARNING: Trusted modules bypass ALL capability checks!
+    allowTrusted = false
 }
 ```
 
@@ -221,6 +225,91 @@ jguardPolicy {
 
 When running with `./gradlew runWithAgent`, the agent will automatically detect policy file changes and reload them.
 
+## Capabilities
+
+jGuard supports the following capabilities:
+
+| Capability | Arguments | Description |
+|------------|-----------|-------------|
+| `fs.read` | `(root, glob)` | Read files matching glob under root |
+| `fs.write` | `(root, glob)` | Write files matching glob under root |
+| `fs.hardlink` | `(root, glob)` | Create hard links matching glob under root |
+| `network.outbound` | `(hostPattern?, portSpec?)` | Open outbound network connections |
+| `network.listen` | `(portSpec?)` | Bind server sockets |
+| `threads.create` | (none) | Create new threads |
+| `native.load` | `(pattern?)` | Load native libraries |
+| `env.read` | `(pattern?)` | Read environment variables |
+| `system.property.read` | `(pattern?)` | Read system properties |
+| `system.property.write` | `(pattern?)` | Write system properties |
+| `process.exec` | `(pattern?)` | Execute external processes |
+| `crypto.provider` | (none) | Modify JCE crypto providers |
+
+### Example Policy
+
+```
+security module com.example.app {
+    // Filesystem access
+    entitle module to fs.read("/data", "**/*.json");
+    entitle module to fs.write("/tmp", "**/*");
+
+    // Network access
+    entitle com.example.app.http.. to network.outbound("**.example.com", 443);
+    entitle module to network.listen(8080);
+
+    // Process execution (restricted to specific command)
+    entitle com.example.app.spawner to process.exec("/usr/bin/java");
+
+    // Deny dangerous operations for all code
+    deny(defensive) module to crypto.provider;
+    deny(defensive) module to native.load;
+}
+```
+
+## Trusted Modules
+
+Trusted modules bypass ALL capability checks. This is intended for native libraries
+(e.g., PyTorch, TensorFlow) that require unrestricted access and cannot be modified.
+
+### Configuration
+
+```groovy
+jguardPolicy {
+    // Enable trusted module support
+    allowTrusted = true
+
+    // External policies for trusted module definitions
+    externalPoliciesSourceDir = file("policies-src")
+    externalPoliciesOutputDir = file("policies")
+}
+```
+
+### Creating a Trusted Module Policy
+
+Create a policy file for the native library in your external policies directory:
+
+```
+// File: policies-src/ai.djl.pytorch.jguard
+security module ai.djl.pytorch {
+    trusted;
+}
+```
+
+Compile and run:
+
+```bash
+./gradlew compileExternalPolicies runWithAgent
+```
+
+### Security Warning
+
+**Trusted modules are a significant security risk.** Only use them when:
+
+1. The module is a native library that cannot be modified
+2. You fully trust the library code
+3. There is no alternative to using the library
+
+The `allowTrusted` setting is `false` by default and must be explicitly enabled.
+
 ## JAR Packaging
 
 When the Java plugin is applied, compiled policy files are automatically included
@@ -279,6 +368,9 @@ java -javaagent:jguard-agent.jar \
 | `jguard.discovery` | Auto-discover policies from signed JARs | true |
 | `jguard.allowUnsignedPolicies` | Allow unsigned JAR policies (dev only!) | false |
 | `jguard.policy.override` | Directory for policy override files | — |
+| `jguard.allow.trusted` | Allow trusted modules (bypass all checks) | false |
+| `jguard.reload` | Enable policy hot reload | false |
+| `jguard.reload.interval` | Hot reload poll interval in seconds | 5 |
 
 ## Example Project
 

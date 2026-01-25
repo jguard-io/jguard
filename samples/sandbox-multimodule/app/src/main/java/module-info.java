@@ -9,10 +9,11 @@
 /**
  * Main application module.
  *
- * <p>This module has minimal entitlements - it delegates sensitive operations to the core and
- * network modules which have their own specific entitlements.
+ * <p>This module has minimal entitlements - it delegates sensitive operations to the core, network,
+ * and security modules which have their own specific entitlements.
  */
 module io.jguard.samples.multimodule.app {
   requires io.jguard.samples.multimodule.core;
   requires io.jguard.samples.multimodule.network;
+  requires io.jguard.samples.multimodule.security;
 }

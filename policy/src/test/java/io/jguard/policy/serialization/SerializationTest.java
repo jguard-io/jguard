@@ -266,7 +266,7 @@ class SerializationTest {
       String json = JsonPolicyWriter.toJson(policy);
       JsonNode root = JSON_MAPPER.readTree(json);
 
-      assertThat(root.get("formatVersion").asInt()).isEqualTo(2);
+      assertThat(root.get("formatVersion").asInt()).isEqualTo(3);
     }
 
     @Test
@@ -783,8 +783,8 @@ class SerializationTest {
       assertThat(bytes[1]).isEqualTo((byte) 'G');
       assertThat(bytes[2]).isEqualTo((byte) 'R');
       assertThat(bytes[3]).isEqualTo((byte) 'D');
-      // Version 2
-      assertThat(bytes[4]).isEqualTo((byte) 2);
+      // Version 3 (with trusted module support)
+      assertThat(bytes[4]).isEqualTo((byte) 3);
     }
 
     @Test

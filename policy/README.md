@@ -87,6 +87,7 @@ security module com.example.myapp {
 |------------|-----------|-------------|
 | `fs.read(root, glob)` | 2 strings | Read files under `root` matching `glob` |
 | `fs.write(root, glob)` | 2 strings | Write files under `root` matching `glob` |
+| `fs.hardlink(root, glob)` | 2 strings | Create hard links under `root` matching `glob` |
 | `network.outbound(host?, port?)` | 0-2 args | Make outbound connections (optional host pattern and port/range) |
 | `network.listen(port?)` | 0-1 | Listen on a port (integer or string range like `"8080-8090"`) |
 | `threads.create` | none | Create new threads |
@@ -94,6 +95,8 @@ security module com.example.myapp {
 | `env.read(pattern?)` | 0-1 string | Read environment variables (optional pattern) |
 | `system.property.read(pattern?)` | 0-1 string | Read system properties (optional pattern) |
 | `system.property.write(pattern?)` | 0-1 string | Write system properties (optional pattern) |
+| `process.exec(pattern?)` | 0-1 string | Execute external processes (optional command pattern) |
+| `crypto.provider` | none | Modify JCE crypto providers |
 
 ### Lexical Elements
 

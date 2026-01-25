@@ -59,6 +59,7 @@ public final class BinaryPolicyWriter {
   private static final byte[] MAGIC = {'J', 'G', 'R', 'D'};
   private static final byte FORMAT_VERSION_V1 = 1;
   private static final byte FORMAT_VERSION_V2 = 2;
+  private static final byte FORMAT_VERSION_V3 = 3;
 
   private static final byte SUBJECT_MODULE = 0;
   private static final byte SUBJECT_EXACT = 1;
@@ -70,6 +71,9 @@ public final class BinaryPolicyWriter {
 
   private static final byte DEFENSIVE_FALSE = 0;
   private static final byte DEFENSIVE_TRUE = 1;
+
+  private static final byte TRUSTED_FALSE = 0;
+  private static final byte TRUSTED_TRUE = 1;
 
   private BinaryPolicyWriter() {
     // Static utility class
@@ -98,7 +102,7 @@ public final class BinaryPolicyWriter {
    * <pre>
    * Header:
    *   magic:         4 bytes ("JGRD")
-   *   version:       1 byte  (2)
+   *   version:       1 byte  (3)
    *
    * Modules:
    *   count:         2 bytes (unsigned short)
@@ -106,7 +110,9 @@ public final class BinaryPolicyWriter {
    *
    * Module:
    *   moduleName:    string  (length-prefixed UTF-8)
+   *   trusted:       1 byte  (0=false, 1=true)
    *   entitlements:  count (2 bytes) + repeated entitlement
+   *   denials:       count (2 bytes) + repeated denial
    * </pre>
    *
    * @param policy the application policy to write
@@ -118,7 +124,7 @@ public final class BinaryPolicyWriter {
 
     // Header
     dos.write(MAGIC);
-    dos.writeByte(FORMAT_VERSION_V2);
+    dos.writeByte(FORMAT_VERSION_V3);
 
     // Module count
     if (policy.modules().size() > 65535) {
@@ -137,6 +143,9 @@ public final class BinaryPolicyWriter {
   private static void writeModule(DataOutputStream dos, ModulePolicy module) throws IOException {
     // Module name
     writeString(dos, module.moduleName());
+
+    // Trusted flag
+    dos.writeByte(module.trusted() ? TRUSTED_TRUE : TRUSTED_FALSE);
 
     // Entitlements
     if (module.entitlements().size() > 65535) {

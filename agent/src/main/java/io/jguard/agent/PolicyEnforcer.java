@@ -147,8 +147,20 @@ public final class PolicyEnforcer {
       return deniedNoPolicy(callerPackage, callerModule, formatDetails(op, arg0, arg1));
     }
 
-    List<Entitlement> entitlements = modulePolicy.get().entitlements();
-    String moduleName = modulePolicy.get().moduleName();
+    ModulePolicy policy = modulePolicy.get();
+
+    // Trusted modules bypass all capability checks
+    if (policy.trusted()) {
+      LOG.debug(
+          "Trusted module bypass: module={}, package={}, op={}",
+          policy.moduleName(),
+          callerPackage,
+          op.capabilityName());
+      return null;
+    }
+
+    List<Entitlement> entitlements = policy.entitlements();
+    String moduleName = policy.moduleName();
 
     // Build cache key (may be null for high-cardinality operations like HOST_PORT)
     String cacheKey = buildCacheKey(callerPackage, callerModule, op, arg0, arg1);

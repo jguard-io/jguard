@@ -59,24 +59,30 @@ public final class Parser {
   }
 
   // PolicyFile: SecurityModuleDeclaration
+  // Keywords are contextual - "security", "module", etc. can appear in package names
   private PolicyFile policyFile() {
-    Token securityToken = consume(TokenType.SECURITY, "Expected 'security' keyword");
+    Token securityToken = consumeKeyword("security", "Expected 'security' keyword");
     SourceLocation location = locationOf(securityToken);
 
-    consume(TokenType.MODULE, "Expected 'module' after 'security'");
+    consumeKeyword("module", "Expected 'module' after 'security'");
     List<String> moduleName = dottedName("module name");
     consume(TokenType.LBRACE, "Expected '{' after module name");
 
     List<EntitlementDeclaration> entitlements = new ArrayList<>();
     List<DenyDeclaration> denials = new ArrayList<>();
+    boolean trusted = false;
 
     while (!check(TokenType.RBRACE) && !isAtEnd()) {
-      if (check(TokenType.ENTITLE)) {
+      if (checkKeyword("entitle")) {
         entitlements.add(entitlementDeclaration());
-      } else if (check(TokenType.DENY)) {
+      } else if (checkKeyword("deny")) {
         denials.add(denyDeclaration());
+      } else if (checkKeyword("trusted")) {
+        advance(); // consume 'trusted'
+        consume(TokenType.SEMICOLON, "Expected ';' after 'trusted'");
+        trusted = true;
       } else {
-        throw error(peek(), "Expected 'entitle' or 'deny'");
+        throw error(peek(), "Expected 'entitle', 'deny', or 'trusted'");
       }
     }
 
@@ -87,16 +93,16 @@ public final class Parser {
       throw error(extra, "Unexpected content after security module declaration");
     }
 
-    return new PolicyFile(moduleName, entitlements, denials, location);
+    return new PolicyFile(moduleName, entitlements, denials, trusted, location);
   }
 
   // EntitlementDeclaration: 'entitle' Subject 'to' Capability ';'
   private EntitlementDeclaration entitlementDeclaration() {
-    Token entitleToken = consume(TokenType.ENTITLE, "Expected 'entitle'");
+    Token entitleToken = consumeKeyword("entitle", "Expected 'entitle'");
     SourceLocation location = locationOf(entitleToken);
 
     Subject subject = subject();
-    consume(TokenType.TO, "Expected 'to' after subject");
+    consumeKeyword("to", "Expected 'to' after subject");
     Capability capability = capability();
     consume(TokenType.SEMICOLON, "Expected ';' after capability");
 
@@ -105,19 +111,19 @@ public final class Parser {
 
   // DenyDeclaration: 'deny' ['(' 'defensive' ')'] Subject 'to' Capability ';'
   private DenyDeclaration denyDeclaration() {
-    Token denyToken = consume(TokenType.DENY, "Expected 'deny'");
+    Token denyToken = consumeKeyword("deny", "Expected 'deny'");
     SourceLocation location = locationOf(denyToken);
 
     // Check for (defensive) modifier
     boolean defensive = false;
     if (match(TokenType.LPAREN)) {
-      consume(TokenType.DEFENSIVE, "Expected 'defensive' after '(' in deny");
+      consumeKeyword("defensive", "Expected 'defensive' after '(' in deny");
       consume(TokenType.RPAREN, "Expected ')' after 'defensive'");
       defensive = true;
     }
 
     Subject subject = subject();
-    consume(TokenType.TO, "Expected 'to' after subject");
+    consumeKeyword("to", "Expected 'to' after subject");
     Capability capability = capability();
     consume(TokenType.SEMICOLON, "Expected ';' after capability");
 
@@ -126,7 +132,7 @@ public final class Parser {
 
   // Subject: 'module' | PackagePattern
   private Subject subject() {
-    if (check(TokenType.MODULE)) {
+    if (checkKeyword("module")) {
       Token moduleToken = advance();
       return new Subject.Module(locationOf(moduleToken));
     }
@@ -219,6 +225,34 @@ public final class Parser {
   private boolean check(TokenType type) {
     if (isAtEnd()) return false;
     return peek().type() == type;
+  }
+
+  /**
+   * Checks if the current token is an identifier with the given keyword value. This enables
+   * contextual keywords that can also be used in package/capability names.
+   */
+  private boolean checkKeyword(String keyword) {
+    if (isAtEnd()) return false;
+    Token token = peek();
+    return token.type() == TokenType.IDENTIFIER && keyword.equals(token.value());
+  }
+
+  /**
+   * Matches and consumes an identifier with the given keyword value. Returns true if matched, false
+   * otherwise.
+   */
+  private boolean matchKeyword(String keyword) {
+    if (checkKeyword(keyword)) {
+      advance();
+      return true;
+    }
+    return false;
+  }
+
+  /** Consumes an identifier with the given keyword value, or throws an error. */
+  private Token consumeKeyword(String keyword, String message) {
+    if (checkKeyword(keyword)) return advance();
+    throw error(peek(), message);
   }
 
   private Token advance() {

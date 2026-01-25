@@ -69,11 +69,44 @@ public class Main {
     printResult("   threads.create", threadResult);
     System.out.println();
 
+    // ===== v0.3 Capability Tests =====
+    System.out.println("===== v0.3 Capability Tests =====");
+    System.out.println();
+
+    // Test process execution from legacy library
+    System.out.println("5. Process Execution (from legacy library):");
+    String execResult = LegacyLibrary.executeProcess("/bin/echo Hello from legacy");
+    printResult("   process.exec", execResult);
+    System.out.println();
+
+    // Test hard link creation from legacy library
+    System.out.println("6. Hard Link Creation (from legacy library):");
+    try {
+      Path tempFile = Files.createTempFile("jguard-legacy-test", ".txt");
+      Files.writeString(tempFile, "Test content");
+      Path linkPath = tempFile.resolveSibling("jguard-legacy-link.txt");
+      String linkResult = LegacyLibrary.createHardLink(tempFile, linkPath);
+      printResult("   fs.hardlink", linkResult);
+      Files.deleteIfExists(tempFile);
+    } catch (Exception e) {
+      System.out.println("   Could not set up test: " + e.getMessage());
+    }
+    System.out.println();
+
+    // Test crypto provider modification from legacy library
+    System.out.println("7. Crypto Provider Modification (from legacy library):");
+    String cryptoResult = LegacyLibrary.addCryptoProvider();
+    printResult("   crypto.provider", cryptoResult);
+    System.out.println();
+
     System.out.println("=".repeat(70));
     System.out.println("  Summary:");
     System.out.println("  - Legacy libraries have NO embedded jGuard policy");
     System.out.println("  - Without external policy: ALL operations BLOCKED (restrictive default)");
     System.out.println("  - With external policy: Deployer grants specific capabilities");
+    System.out.println();
+    System.out.println("  v0.3 capabilities (process.exec, fs.hardlink, crypto.provider):");
+    System.out.println("  - NOT granted in external policy = BLOCKED by default");
     System.out.println("=".repeat(70));
   }
 

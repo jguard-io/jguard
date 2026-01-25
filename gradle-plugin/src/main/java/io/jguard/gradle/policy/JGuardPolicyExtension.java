@@ -162,6 +162,32 @@ public abstract class JGuardPolicyExtension {
   public abstract Property<Boolean> getExternalPoliciesIncludeJson();
 
   // ========================================================================
+  // Trusted Module Configuration
+  // ========================================================================
+
+  /**
+   * Whether to allow trusted modules.
+   *
+   * <p>Trusted modules bypass ALL capability checks. This is intended for native libraries (e.g.,
+   * PyTorch, TensorFlow) that require unrestricted access and cannot be modified.
+   *
+   * <p><strong>Security Warning:</strong> Only enable this in controlled environments where you
+   * trust the policy override files. Trusted modules can perform any operation without restriction.
+   *
+   * <p>To mark a module as trusted, create an override policy file:
+   *
+   * <pre>
+   * // File: policies-src/ai.djl.pytorch.jguard
+   * security module ai.djl.pytorch {
+   *     trusted;
+   * }
+   * </pre>
+   *
+   * <p>Default: {@code false}
+   */
+  public abstract Property<Boolean> getAllowTrusted();
+
+  // ========================================================================
   // Hot Reload Configuration
   // ========================================================================
 

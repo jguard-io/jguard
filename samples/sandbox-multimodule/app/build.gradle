@@ -19,6 +19,7 @@ dependencies {
   implementation("io.jguard:core")
   implementation(project(":core"))
   implementation(project(":network"))
+  implementation(project(":security"))
 }
 
 // jGuard auto-discovers policies from signed JARs - no config needed!
@@ -33,5 +34,5 @@ tasks.named("runWithAgent") {
   def jguardBuild = gradle.includedBuild("jguard")
   dependsOn(jguardBuild.task(":agent:jar"))
   // Ensure all module JARs are built with embedded policies
-  dependsOn(":core:jar", ":network:jar")
+  dependsOn(":core:jar", ":network:jar", ":security:jar")
 }

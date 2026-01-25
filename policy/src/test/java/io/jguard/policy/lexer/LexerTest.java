@@ -15,44 +15,55 @@ import org.junit.jupiter.api.Test;
 /** Comprehensive tests for the jGuard policy lexer. */
 class LexerTest {
 
-  // ===== Keywords =====
+  // ===== Contextual Keywords =====
+  // All keywords are now contextual - they are tokenized as IDENTIFIER
+  // and the parser checks their values in context. This allows package
+  // names like "com.example.security" or "com.example.module.to".
 
   @Test
-  void tokenizesSecurityKeyword() {
+  void tokenizesSecurityAsIdentifier() {
     List<Token> tokens = tokenize("security");
     assertThat(tokens).hasSize(2);
-    assertThat(tokens.get(0).type()).isEqualTo(TokenType.SECURITY);
+    assertThat(tokens.get(0).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(0).value()).isEqualTo("security");
   }
 
   @Test
-  void tokenizesModuleKeyword() {
+  void tokenizesModuleAsIdentifier() {
     List<Token> tokens = tokenize("module");
     assertThat(tokens).hasSize(2);
-    assertThat(tokens.get(0).type()).isEqualTo(TokenType.MODULE);
+    assertThat(tokens.get(0).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(0).value()).isEqualTo("module");
   }
 
   @Test
-  void tokenizesEntitleKeyword() {
+  void tokenizesEntitleAsIdentifier() {
     List<Token> tokens = tokenize("entitle");
     assertThat(tokens).hasSize(2);
-    assertThat(tokens.get(0).type()).isEqualTo(TokenType.ENTITLE);
+    assertThat(tokens.get(0).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(0).value()).isEqualTo("entitle");
   }
 
   @Test
-  void tokenizesToKeyword() {
+  void tokenizesToAsIdentifier() {
     List<Token> tokens = tokenize("to");
     assertThat(tokens).hasSize(2);
-    assertThat(tokens.get(0).type()).isEqualTo(TokenType.TO);
+    assertThat(tokens.get(0).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(0).value()).isEqualTo("to");
   }
 
   @Test
-  void tokenizesAllKeywordsInSequence() {
+  void tokenizesAllKeywordsAsIdentifiersInSequence() {
     List<Token> tokens = tokenize("security module entitle to");
     assertThat(tokens).hasSize(5);
-    assertThat(tokens.get(0).type()).isEqualTo(TokenType.SECURITY);
-    assertThat(tokens.get(1).type()).isEqualTo(TokenType.MODULE);
-    assertThat(tokens.get(2).type()).isEqualTo(TokenType.ENTITLE);
-    assertThat(tokens.get(3).type()).isEqualTo(TokenType.TO);
+    assertThat(tokens.get(0).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(0).value()).isEqualTo("security");
+    assertThat(tokens.get(1).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(1).value()).isEqualTo("module");
+    assertThat(tokens.get(2).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(2).value()).isEqualTo("entitle");
+    assertThat(tokens.get(3).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(3).value()).isEqualTo("to");
     assertThat(tokens.get(4).type()).isEqualTo(TokenType.EOF);
   }
 
@@ -456,8 +467,11 @@ class LexerTest {
     List<Token> tokens = tokenize(source);
 
     // security module com.example.app {
-    assertThat(tokens.get(0).type()).isEqualTo(TokenType.SECURITY);
-    assertThat(tokens.get(1).type()).isEqualTo(TokenType.MODULE);
+    // Note: Keywords are contextual - all words tokenize as IDENTIFIER
+    assertThat(tokens.get(0).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(0).value()).isEqualTo("security");
+    assertThat(tokens.get(1).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(1).value()).isEqualTo("module");
     assertThat(tokens.get(2).type()).isEqualTo(TokenType.IDENTIFIER);
     assertThat(tokens.get(2).value()).isEqualTo("com");
     assertThat(tokens.get(3).type()).isEqualTo(TokenType.DOT);
@@ -469,9 +483,12 @@ class LexerTest {
     assertThat(tokens.get(7).type()).isEqualTo(TokenType.LBRACE);
 
     // entitle module to fs.read("/data", "*.json");
-    assertThat(tokens.get(8).type()).isEqualTo(TokenType.ENTITLE);
-    assertThat(tokens.get(9).type()).isEqualTo(TokenType.MODULE);
-    assertThat(tokens.get(10).type()).isEqualTo(TokenType.TO);
+    assertThat(tokens.get(8).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(8).value()).isEqualTo("entitle");
+    assertThat(tokens.get(9).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(9).value()).isEqualTo("module");
+    assertThat(tokens.get(10).type()).isEqualTo(TokenType.IDENTIFIER);
+    assertThat(tokens.get(10).value()).isEqualTo("to");
     assertThat(tokens.get(11).type()).isEqualTo(TokenType.IDENTIFIER);
     assertThat(tokens.get(11).value()).isEqualTo("fs");
     assertThat(tokens.get(12).type()).isEqualTo(TokenType.DOT);

@@ -1,0 +1,12 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * jGuard policy for the security module.
+ *
+ * This module demonstrates the crypto.provider capability and contextual keywords.
+ * Note: The module name contains "security" which is a contextual keyword in jGuard.
+ */
+security module io.jguard.samples.multimodule.security {
+  // Allow modifying JCE crypto providers
+  entitle module to crypto.provider;
+}

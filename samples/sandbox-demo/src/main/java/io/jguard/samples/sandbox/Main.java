@@ -19,10 +19,13 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import io.jguard.core.JGuard;
 import io.jguard.samples.sandbox.config.ConfigReader;
+import io.jguard.samples.sandbox.fs.HardLinkCreator;
 import io.jguard.samples.sandbox.nativelib.NativeLoader;
 import io.jguard.samples.sandbox.net.NetworkClient;
 import io.jguard.samples.sandbox.net.NetworkServer;
 import io.jguard.samples.sandbox.net.restricted.RestrictedNetworkClient;
+import io.jguard.samples.sandbox.process.ProcessExecutor;
+import io.jguard.samples.sandbox.security.CryptoProviderManager;
 import io.jguard.samples.sandbox.worker.BackgroundWorker;
 
 /**
@@ -161,6 +164,28 @@ public final class Main {
 
     // Test 23: Property write from entitled package with non-matching pattern (NOT ENTITLED)
     demonstrateUnentitledPropertyWrite();
+
+    // === NEW v0.3 CAPABILITY TESTS ===
+    System.out.println("--- NEW v0.3 CAPABILITY TESTS ---");
+    System.out.println();
+
+    // Test 24: Process execution from entitled package (ENTITLED)
+    demonstrateEntitledProcessExec();
+
+    // Test 25: Process execution of unauthorized command (NOT ENTITLED)
+    demonstrateUnentitledProcessExec();
+
+    // Test 26: Hard link creation in entitled directory (ENTITLED)
+    demonstrateEntitledHardLink();
+
+    // Test 27: Hard link creation in unauthorized directory (NOT ENTITLED)
+    demonstrateUnentitledHardLink();
+
+    // Test 28: Crypto provider modification from entitled package (ENTITLED)
+    demonstrateEntitledCryptoProvider();
+
+    // Test 29: Crypto provider modification from non-entitled package (NOT ENTITLED)
+    demonstrateUnentitledCryptoProvider();
   }
 
   /**
@@ -744,6 +769,172 @@ public final class Main {
       System.out.println("  (This should be BLOCKED when running with the agent!)");
     } else {
       System.out.println("  BLOCKED (expected): Property 'java.home' doesn't match 'app.**'");
+    }
+
+    System.out.println();
+  }
+
+  // ========== NEW v0.3 CAPABILITY DEMONSTRATIONS ==========
+
+  /**
+   * Demonstrates process execution from entitled package.
+   *
+   * <p>This operation IS entitled because it's called from the .process package which has
+   * process.exec("/bin/echo") entitlement.
+   */
+  private static void demonstrateEntitledProcessExec() {
+    System.out.println("[ENTITLED] process.exec(\"/bin/echo\") (from .process package)");
+    System.out.println("  Attempting to execute echo command...");
+
+    try {
+      String output = ProcessExecutor.echo("Hello from jGuard!");
+      System.out.println("  SUCCESS: Command output: " + output);
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (unexpected): " + e.getMessage());
+    } catch (Exception e) {
+      System.out.println("  ERROR: " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates process execution of unauthorized command.
+   *
+   * <p>This operation is NOT entitled because /bin/ls is not in the allowed commands.
+   */
+  private static void demonstrateUnentitledProcessExec() {
+    System.out.println("[NOT ENTITLED] process.exec to unauthorized command");
+    System.out.println("  Attempting to execute /bin/ls (only /bin/echo is allowed)...");
+
+    try {
+      ProcessExecutor.attemptUnauthorizedExec();
+      System.out.println("  SUCCESS: Command executed (unexpected!)");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (expected): " + e.getMessage());
+    } catch (Exception e) {
+      System.out.println("  ERROR: " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates hard link creation in entitled directory.
+   *
+   * <p>This operation IS entitled because it's called from the .fs package which has
+   * fs.hardlink("build/test-output", "**") entitlement.
+   */
+  private static void demonstrateEntitledHardLink() {
+    System.out.println("[ENTITLED] fs.hardlink(\"build/test-output\", \"**\") (from .fs package)");
+    System.out.println("  Attempting to create hard link in build/test-output...");
+
+    try {
+      // First create a source file
+      Path outputDir = Path.of("build/test-output");
+      Files.createDirectories(outputDir);
+      Path sourceFile = outputDir.resolve("source.txt");
+      Files.writeString(sourceFile, "Source file for hard link test");
+
+      // Create hard link
+      Path link = HardLinkCreator.createHardLink(sourceFile, "hardlink.txt");
+      System.out.println("  SUCCESS: Created hard link at " + link);
+
+      // Clean up
+      Files.deleteIfExists(link);
+      Files.deleteIfExists(sourceFile);
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (unexpected): " + e.getMessage());
+    } catch (Exception e) {
+      System.out.println("  ERROR: " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates hard link creation in unauthorized directory.
+   *
+   * <p>This operation is NOT entitled because /tmp is not in the allowed directory.
+   */
+  private static void demonstrateUnentitledHardLink() {
+    System.out.println("[NOT ENTITLED] fs.hardlink to unauthorized directory");
+    System.out.println("  Attempting to create hard link in /tmp (only build/test-output is allowed)...");
+
+    try {
+      // First create a source file
+      Path outputDir = Path.of("build/test-output");
+      Files.createDirectories(outputDir);
+      Path sourceFile = outputDir.resolve("source-for-unentitled.txt");
+      Files.writeString(sourceFile, "Source file for unauthorized hard link test");
+
+      // Attempt unauthorized hard link
+      HardLinkCreator.attemptUnauthorizedHardLink(sourceFile);
+      System.out.println("  SUCCESS: Hard link created (unexpected!)");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+
+      // Clean up
+      Files.deleteIfExists(sourceFile);
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (expected): " + e.getMessage());
+    } catch (Exception e) {
+      System.out.println("  ERROR: " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates crypto provider modification from entitled package.
+   *
+   * <p>This operation IS entitled because it's called from the .security package which has
+   * crypto.provider entitlement.
+   */
+  private static void demonstrateEntitledCryptoProvider() {
+    System.out.println("[ENTITLED] crypto.provider (from .security package)");
+    System.out.println("  Listing installed security providers...");
+
+    String[] providers = CryptoProviderManager.listProviders();
+    System.out.println("  Found " + providers.length + " providers");
+
+    System.out.println("  Attempting to add/remove a test provider...");
+    try {
+      boolean success = CryptoProviderManager.demonstrateProviderModification();
+      if (success) {
+        System.out.println("  SUCCESS: Added and removed test provider");
+      } else {
+        System.out.println("  SUCCESS: Provider operation completed (provider may already exist)");
+      }
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (unexpected): " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates crypto provider modification from non-entitled package.
+   *
+   * <p>This operation is NOT entitled because Main is in the sandbox package, not the .security
+   * package.
+   */
+  private static void demonstrateUnentitledCryptoProvider() {
+    System.out.println("[NOT ENTITLED] crypto.provider (from main package)");
+    System.out.println("  Attempting to add a provider directly...");
+
+    try {
+      java.security.Provider dummyProvider =
+          new java.security.Provider("UnauthorizedProvider", "1.0", "Unauthorized provider") {
+            private static final long serialVersionUID = 1L;
+          };
+      java.security.Security.addProvider(dummyProvider);
+      System.out.println("  SUCCESS: Provider added (unexpected!)");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+      // Clean up
+      java.security.Security.removeProvider("UnauthorizedProvider");
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (expected): " + e.getMessage());
     }
 
     System.out.println();

@@ -16,13 +16,18 @@ import java.util.Objects;
  * <p>This is the compiled form of a {@code module-info.jguard} file. It is normalized and sorted to
  * ensure that identical source files produce byte-identical output.
  *
- * @param formatVersion the policy format version (1=single-module, 2=multi-module, 3=with denials)
+ * @param formatVersion the policy format version (1=single-module, 2=multi-module, 3=with trusted)
  * @param moduleName the fully qualified module name
  * @param entitlements the granted entitlements (sorted, deduplicated)
  * @param denials the denied capabilities (sorted, deduplicated)
+ * @param trusted whether this module is trusted (all capability checks bypassed)
  */
 public record PolicyDescriptor(
-    int formatVersion, String moduleName, List<Entitlement> entitlements, List<Denial> denials) {
+    int formatVersion,
+    String moduleName,
+    List<Entitlement> entitlements,
+    List<Denial> denials,
+    boolean trusted) {
 
   /** Format version 1: single-module policies (legacy). */
   public static final int FORMAT_VERSION_V1 = 1;
@@ -30,8 +35,11 @@ public record PolicyDescriptor(
   /** Format version 2: multi-module policies with denial support. */
   public static final int FORMAT_VERSION_V2 = 2;
 
+  /** Format version 3: multi-module policies with trusted module support. */
+  public static final int FORMAT_VERSION_V3 = 3;
+
   /** Current format version. */
-  public static final int FORMAT_VERSION = FORMAT_VERSION_V2;
+  public static final int FORMAT_VERSION = FORMAT_VERSION_V3;
 
   /** Compact constructor that validates and normalizes the record fields. */
   public PolicyDescriptor {
@@ -47,14 +55,27 @@ public record PolicyDescriptor(
   }
 
   /**
-   * Backwards-compatible constructor for policies without denials.
+   * Backwards-compatible constructor for policies without denials or trusted flag.
    *
    * @param formatVersion the format version
    * @param moduleName the module name
    * @param entitlements the entitlements
    */
   public PolicyDescriptor(int formatVersion, String moduleName, List<Entitlement> entitlements) {
-    this(formatVersion, moduleName, entitlements, List.of());
+    this(formatVersion, moduleName, entitlements, List.of(), false);
+  }
+
+  /**
+   * Backwards-compatible constructor for policies without trusted flag.
+   *
+   * @param formatVersion the format version
+   * @param moduleName the module name
+   * @param entitlements the entitlements
+   * @param denials the denials
+   */
+  public PolicyDescriptor(
+      int formatVersion, String moduleName, List<Entitlement> entitlements, List<Denial> denials) {
+    this(formatVersion, moduleName, entitlements, denials, false);
   }
 
   /**
@@ -65,7 +86,7 @@ public record PolicyDescriptor(
    * @return the policy descriptor
    */
   public static PolicyDescriptor create(String moduleName, List<Entitlement> entitlements) {
-    return new PolicyDescriptor(FORMAT_VERSION, moduleName, entitlements, List.of());
+    return new PolicyDescriptor(FORMAT_VERSION, moduleName, entitlements, List.of(), false);
   }
 
   /**
@@ -78,7 +99,17 @@ public record PolicyDescriptor(
    */
   public static PolicyDescriptor create(
       String moduleName, List<Entitlement> entitlements, List<Denial> denials) {
-    return new PolicyDescriptor(FORMAT_VERSION, moduleName, entitlements, denials);
+    return new PolicyDescriptor(FORMAT_VERSION, moduleName, entitlements, denials, false);
+  }
+
+  /**
+   * Creates a trusted policy descriptor.
+   *
+   * @param moduleName the fully qualified module name
+   * @return a trusted policy descriptor
+   */
+  public static PolicyDescriptor trusted(String moduleName) {
+    return new PolicyDescriptor(FORMAT_VERSION, moduleName, List.of(), List.of(), true);
   }
 
   /**

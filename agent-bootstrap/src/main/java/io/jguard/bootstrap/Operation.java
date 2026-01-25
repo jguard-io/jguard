@@ -89,7 +89,36 @@ public enum Operation {
    *
    * <p>Arguments: {@code arg0} = property key (null for bulk setProperties()), {@code arg1} = 0
    */
-  PROP_WRITE("system.property.write", Category.TARGET_PATTERN);
+  PROP_WRITE("system.property.write", Category.TARGET_PATTERN),
+
+  /**
+   * Process execution.
+   *
+   * <p>Arguments: {@code arg0} = command/path, {@code arg1} = 0
+   *
+   * <p>Guards: {@code Runtime.exec()}, {@code ProcessBuilder.start()}
+   */
+  PROCESS_EXEC("process.exec", Category.TARGET_PATTERN),
+
+  /**
+   * Hard link creation.
+   *
+   * <p>Arguments: {@code arg0} = link Path, {@code arg1} = 0
+   *
+   * <p>Guards: {@code Files.createLink()}. Note: caller also needs {@code fs.read} on the existing
+   * file and {@code fs.write} on the link parent directory.
+   */
+  FS_HARDLINK("fs.hardlink", Category.FILESYSTEM),
+
+  /**
+   * Crypto provider access.
+   *
+   * <p>Arguments: {@code arg0} = null, {@code arg1} = 0
+   *
+   * <p>Guards: {@code Security.addProvider()}, {@code Security.insertProviderAt()}, {@code
+   * Security.removeProvider()}, {@code Security.setProperty()}
+   */
+  CRYPTO_PROVIDER("crypto.provider", Category.SIMPLE);
 
   /**
    * Categories determine matching logic in PolicyEnforcer.

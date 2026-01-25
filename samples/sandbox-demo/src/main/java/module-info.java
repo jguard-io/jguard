@@ -7,4 +7,7 @@ module io.jguard.samples.sandbox {
     exports io.jguard.samples.sandbox.net.restricted;
     exports io.jguard.samples.sandbox.worker;
     exports io.jguard.samples.sandbox.config;
+    exports io.jguard.samples.sandbox.process;
+    exports io.jguard.samples.sandbox.fs;
+    exports io.jguard.samples.sandbox.security;
 }
