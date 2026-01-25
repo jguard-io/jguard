@@ -54,6 +54,8 @@ tasks.withType(Test).configureEach {
 // In production, JARs should be signed and this should be false (the default)
 jguardPolicy {
   allowUnsignedPolicies = true
+  // JSON output disabled by default (requires Jackson on classpath)
+  // Use the CLI (jguardc) for JSON output if needed
 }
 
 // The runWithAgent task is now provided by the io.jguard.policy plugin!

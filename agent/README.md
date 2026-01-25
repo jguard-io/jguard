@@ -66,13 +66,15 @@ This separation enables:
 | `jguard.mode` | strict/permissive/audit | strict | Enforcement mode |
 | `jguard.log.level` | error/warn/info/debug/trace | info | Log verbosity |
 | `jguard.log.denied` | true/false | true | Log denied operations |
-| `jguard.log.allowed` | true/false | false | Log allowed operations |
+| `jguard.log.allowed` | true/false | false* | Log allowed operations |
 | `jguard.reload` | true/false | false | Enable policy hot reload |
 | `jguard.reload.interval` | seconds | 5 | Hot reload poll interval |
 | `jguard.discovery` | true/false | **true** | Auto-discover policies from signed JARs |
 | `jguard.allowUnsignedPolicies` | true/false | false | Allow unsigned JAR policies (dev only!) |
 | `jguard.policy.override` | path | — | Directory for policy override files |
 | `jguard.bootstrap.cache.dir` | path | ~/.cache/jguard | Bootstrap JAR cache directory |
+
+\* In AUDIT mode, `jguard.log.allowed` defaults to `true`. Set explicitly to `false` to suppress allowed logs even in AUDIT mode.
 
 ### Enforcement Modes
 
@@ -476,12 +478,12 @@ The agent is designed for production use with:
 
 ### Bootstrap JAR Caching
 
-The agent extracts a bootstrap JAR at startup to inject classes into the bootstrap classloader. To optimize performance in test environments and containerized deployments with multiple JVMs, the extracted bootstrap JAR is cached by version.
+The agent extracts a bootstrap JAR at startup to inject classes into the bootstrap classloader. To optimize performance in test environments and containerized deployments with multiple JVMs, the extracted bootstrap JAR is cached by version and content hash.
 
 **Cache Location (Default):**
-- Unix/macOS: `~/.cache/jguard/jguard-bootstrap-<version>.jar`
-- Windows: `%LOCALAPPDATA%/jguard/cache/jguard-bootstrap-<version>.jar`
-- XDG-compliant: `$XDG_CACHE_HOME/jguard/jguard-bootstrap-<version>.jar`
+- Unix/macOS: `~/.cache/jguard/jguard-bootstrap-<version>-<hash>.jar`
+- Windows: `%LOCALAPPDATA%/jguard/cache/jguard-bootstrap-<version>-<hash>.jar`
+- XDG-compliant: `$XDG_CACHE_HOME/jguard/jguard-bootstrap-<version>-<hash>.jar`
 
 **Custom Cache Location:**
 
@@ -515,4 +517,4 @@ The cache file can be safely deleted to force re-extraction:
 rm ~/.cache/jguard/jguard-bootstrap-*.jar
 ```
 
-Different jGuard versions use different cache files, so upgrading doesn't require manual cache clearing.
+The cache filename includes both version and a content hash (first 8 hex chars of SHA-256), so different jGuard versions—including SNAPSHOT builds with code changes—automatically use different cache files. Upgrading or rebuilding doesn't require manual cache clearing.

@@ -20,7 +20,6 @@ import org.gradle.api.provider.Property;
  * jguardPolicy {
  *     sourceFile = file("src/main/jguard/module-info.jguard")
  *     outputDir = layout.buildDirectory.dir("generated/jguard")
- *     includeJson = true
  *     mode = "strict"  // strict, permissive, or audit
  * }
  * </pre>
@@ -33,6 +32,13 @@ import org.gradle.api.provider.Property;
  *   <li>{@code -Pjguard.skip=true} - Skip agent enforcement
  *   <li>{@code -Pjguard.mode=audit} - Override enforcement mode
  * </ul>
+ *
+ * <p><b>JSON Output:</b> The Gradle plugin only generates binary policy files (.bin). For JSON
+ * output (useful for debugging or documentation), use the jGuard CLI:
+ *
+ * <pre>
+ * jguardc --json -o policy.json src/main/java/module-info.jguard
+ * </pre>
  */
 public abstract class JGuardPolicyExtension {
 
@@ -53,7 +59,11 @@ public abstract class JGuardPolicyExtension {
   /**
    * Whether to generate a JSON representation alongside the binary.
    *
-   * <p>Default: {@code true}
+   * <p>Default: {@code false}
+   *
+   * <p><b>Note:</b> JSON output is disabled by default because the required Jackson library is
+   * excluded from the plugin to avoid JPMS conflicts in Gradle buildSrc. For JSON output, use the
+   * jGuard CLI ({@code jguardc --json}).
    */
   public abstract Property<Boolean> getIncludeJson();
 

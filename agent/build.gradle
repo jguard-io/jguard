@@ -101,13 +101,24 @@ tasks.named("assemble") {
   dependsOn shadowJar
 }
 
-// Configure publishing to use shadowJar instead of jar
+// Configure publishing to use shadowJar as the only variant.
+// This ensures consumers get the fat jar without needing special attributes.
 afterEvaluate {
   publishing.publications.named("maven") {
     // Remove the default jar artifact and add shadowJar
     def artifactsToRemove = artifacts.findAll { it.classifier == '' || it.classifier == null }
     artifactsToRemove.each { artifacts.remove(it) }
     artifact(shadowJar)
+  }
+}
+
+// Suppress the default runtimeElements variant from Gradle module metadata.
+// The shadow jar is self-contained and shouldn't declare transitive dependencies.
+// Consumers should use the shadowRuntimeElements variant (Bundling.SHADOWED).
+components.named("java") {
+  // Only publish the shadowed variant, not the default runtime variant
+  withVariantsFromConfiguration(configurations.runtimeElements) {
+    skip()
   }
 }
 

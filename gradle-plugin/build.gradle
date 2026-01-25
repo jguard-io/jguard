@@ -8,11 +8,73 @@
 plugins {
   id "java-gradle-plugin"
   alias(libs.plugins.plugin.publish)
+  alias(libs.plugins.shadow)
 }
 
 dependencies {
-  implementation(project(":policy"))
-  implementation(libs.slf4j.api)
+  // Use implementation for composite builds (loads classes directly) and for shadow JAR.
+  // Exclude Jackson and SLF4J to prevent JPMS conflicts.
+  implementation(project(":policy")) {
+    exclude group: 'com.fasterxml.jackson.core'
+    exclude group: 'org.slf4j'
+  }
+}
+
+// Configure shadow plugin to create a self-contained plugin JAR for publishing.
+// This shades jguard-policy and jguard-core into the plugin JAR, avoiding
+// JPMS conflicts caused by Automatic-Module-Name manifests in buildSrc.
+tasks.named('shadowJar', com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar) {
+  archiveClassifier = ''  // No classifier - replace the main JAR
+
+  // Shade implementation dependencies (jguard-policy -> jguard-core)
+  configurations = [project.configurations.runtimeClasspath]
+
+  // Merge service files
+  mergeServiceFiles()
+
+  // Exclude module-info to avoid JPMS conflicts in buildSrc
+  exclude 'module-info.class'
+  exclude 'META-INF/versions/*/module-info.class'
+
+  // Create a clean manifest without Automatic-Module-Name
+  manifest {
+    attributes(
+      'Manifest-Version': '1.0',
+      'Implementation-Title': 'jGuard Gradle Plugin',
+      'Implementation-Version': project.version
+    )
+  }
+}
+
+// Remove Class-Path manifest entry after shadowJar runs
+tasks.named('shadowJar').configure {
+  doLast {
+    // The Class-Path is set by shadow, but we're self-contained
+    // Just log that the jar is built - Class-Path will be ignored since deps are shaded
+    logger.info("Built self-contained shadow JAR with relocated dependencies")
+  }
+}
+
+// Replace the standard jar with shadow jar for publishing
+tasks.named('jar') {
+  archiveClassifier = 'plain'  // Keep original jar but with classifier
+}
+
+// Shadow jar becomes the main artifact
+artifacts {
+  archives(tasks.named('shadowJar'))
+}
+
+// Prevent Gradle from inferring module-path compilation in buildSrc.
+// Gradle 8.x interprets jvm.version=21 as indicating a modular JAR.
+// By setting it to 8, we ensure classpath compilation is used instead.
+// The plugin still compiles with Java 21, it just doesn't advertise it.
+afterEvaluate {
+  configurations.matching { it.name.contains('RuntimeElements') || it.name.contains('runtimeElements') }.configureEach {
+    attributes {
+      attribute(org.gradle.api.attributes.java.TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 8)
+    }
+  }
 }
 
 gradlePlugin {

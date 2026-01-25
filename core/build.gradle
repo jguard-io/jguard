@@ -66,4 +66,19 @@ tasks.matching { it.name == "sourcesJar" }.configureEach {
   dependsOn("generateVersionClass")
 }
 
+// Exclude module-info.class from JAR to prevent JPMS conflicts
+// when the gradle-plugin (which transitively depends on core via policy)
+// is used in Gradle buildSrc or other non-modular contexts.
+// Gradle's buildSrc doesn't support JPMS modules, and including
+// module-info.class causes "package org.gradle.api.* is not visible" errors.
+//
+// We add Automatic-Module-Name to the manifest so the JAR still works
+// as a named automatic module for JPMS consumers (e.g., sample apps).
+tasks.named('jar', Jar) {
+  exclude 'module-info.class'
+  manifest {
+    attributes('Automatic-Module-Name': 'io.jguard.core')
+  }
+}
+
 

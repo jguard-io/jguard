@@ -136,10 +136,18 @@ class PolicyMergerTest {
 
       ApplicationPolicy merged = PolicyMerger.merge(embedded, externalDir);
 
-      // Both modules should now have fs.read AND threads.create
+      // Both embedded modules should now have fs.read AND threads.create
+      // (The unnamed module auto-created from global only has threads.create)
       for (ModulePolicy module : merged.modules()) {
-        Set<String> capabilities = extractCapabilityNames(module);
-        assertThat(capabilities).containsExactlyInAnyOrder("fs.read", "threads.create");
+        if ("unnamed".equals(module.moduleName())) {
+          // Unnamed gets only global entitlements
+          Set<String> capabilities = extractCapabilityNames(module);
+          assertThat(capabilities).containsExactly("threads.create");
+        } else {
+          // Embedded modules get global merged in
+          Set<String> capabilities = extractCapabilityNames(module);
+          assertThat(capabilities).containsExactlyInAnyOrder("fs.read", "threads.create");
+        }
       }
     }
   }

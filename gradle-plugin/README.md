@@ -82,8 +82,10 @@ jguardPolicy {
     // Output directory (default: build/generated/jguard)
     outputDir = layout.buildDirectory.dir("generated/jguard")
 
-    // Include JSON representation (default: true)
-    includeJson = true
+    // Include JSON representation (default: false)
+    // Note: JSON output requires the jGuard CLI (jguardc --json)
+    // The Gradle plugin only generates binary policy files by default.
+    includeJson = false
 
     // Binary output filename (default: policy.bin)
     binName = "policy.bin"
@@ -199,6 +201,10 @@ The plugin provides a `compileExternalPolicies` task:
 
 This compiles all `.jguard` files in the source directory to `.bin` files in the output directory.
 
+**Automatic dependency:** When `externalPoliciesSourceDir` is configured, all `Test` tasks
+automatically depend on `compileExternalPolicies`. This ensures policies are compiled
+before tests run - no manual wiring required.
+
 ### Directory Structure
 
 ```
@@ -243,6 +249,31 @@ jGuard supports the following capabilities:
 | `system.property.write` | `(pattern?)` | Write system properties |
 | `process.exec` | `(pattern?)` | Execute external processes |
 | `crypto.provider` | (none) | Modify JCE crypto providers |
+
+### Pattern Matching
+
+Pattern arguments use glob-like syntax with special handling for hierarchical names
+(dotted paths like `java.net.preferIPv4Stack`):
+
+| Pattern | Matches | Does NOT Match |
+|---------|---------|----------------|
+| `*` | Any single value | — |
+| `HOME` | Exact match: `HOME` | `HOME_DIR`, `MY_HOME` |
+| `java.*` | Direct children: `java.version`, `java.home` | `java.net.preferIPv4Stack` |
+| `java.**` | All descendants: `java.version`, `java.net.preferIPv4Stack` | `javax.net.ssl` |
+
+**Important:** Use `**` (double asterisk) for hierarchical property/env patterns:
+
+```
+// WRONG - only matches java.version, java.home, etc.
+entitle module to system.property.read("java.*");
+
+// CORRECT - matches java.version AND java.net.preferIPv4Stack
+entitle module to system.property.read("java.**");
+```
+
+This follows standard glob conventions where `*` matches within a single segment
+and `**` matches across segment boundaries.
 
 ### Example Policy
 
@@ -380,6 +411,88 @@ See `samples/sandbox-demo/` for a complete working example:
 cd samples/sandbox-demo
 ../../gradlew runWithAgent
 ```
+
+## Using in buildSrc
+
+The jGuard Gradle plugin is designed to work seamlessly in Gradle `buildSrc` projects.
+The plugin is packaged as a self-contained shadow JAR that includes all dependencies,
+avoiding JPMS module path conflicts that can occur in buildSrc.
+
+```groovy
+// buildSrc/build.gradle
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("io.jguard:gradle-plugin:VERSION")
+}
+```
+
+No special configuration or exclusions are required - the plugin handles all JPMS
+compatibility concerns internally.
+
+### External Policies in buildSrc
+
+When using external policies (e.g., `_global.jguard`) in buildSrc to configure test
+infrastructure for the main project, the policies must be compiled **before** the main
+project's test tasks run. Since buildSrc is built before the main project, add this
+dependency to ensure policies are always compiled:
+
+```groovy
+// buildSrc/build.gradle
+plugins {
+    id "io.jguard.policy"
+}
+
+jguardPolicy {
+    externalPoliciesSourceDir = file("src/test/jguard")
+    externalPoliciesOutputDir = layout.buildDirectory.dir("jguard/test-policies")
+}
+
+// Ensure policies are compiled when buildSrc is built
+tasks.named('classes') {
+    dependsOn('compileExternalPolicies')
+}
+```
+
+This pattern is useful when buildSrc provides test infrastructure (e.g., a custom test
+plugin) that configures jGuard for test workers in the main project. The compiled
+policies will be available before any main project task executes.
+
+**Directory structure:**
+
+```
+my-project/
+├── buildSrc/
+│   ├── build.gradle                    # Apply io.jguard.policy plugin
+│   ├── src/
+│   │   ├── main/java/                  # Custom Gradle plugins
+│   │   └── test/jguard/
+│   │       └── _global.jguard          # Global policy for test infrastructure
+│   └── build/
+│       └── jguard/test-policies/
+│           └── _global.bin             # Compiled policy (auto-generated)
+├── server/
+│   └── src/test/java/                  # Tests that use the global policy
+└── settings.gradle
+```
+
+## JSON Output
+
+The Gradle plugin generates binary policy files (`.bin`) by default. For human-readable
+JSON output (useful for debugging or documentation), use the jGuard CLI:
+
+```bash
+# Compile policy to JSON
+jguardc --json -o policy.json src/main/java/module-info.jguard
+
+# Compile to both binary and JSON
+jguardc -o policy.bin --json -o policy.json src/main/java/module-info.jguard
+```
+
+JSON output is disabled in the Gradle plugin to avoid dependency conflicts with Jackson
+in buildSrc environments.
 
 ## Troubleshooting
 
