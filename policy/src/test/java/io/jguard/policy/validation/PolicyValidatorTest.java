@@ -802,4 +802,70 @@ class PolicyValidatorTest {
     Capability capability = new Capability(List.of(capabilityName.split("\\.")), List.of(), LOC);
     return new DenyDeclaration(subject, capability, defensive, LOC);
   }
+
+  @Nested
+  class RuntimeLifecycleValidationTest {
+
+    @Test
+    void acceptsRuntimeExitWithNoArgs() {
+      EntitlementDeclaration entitlement = moduleEntitlement("runtime.exit");
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void rejectsRuntimeExitWithArgs() {
+      // runtime.exit takes no arguments
+      EntitlementDeclaration entitlement = moduleEntitlement("runtime.exit", intArg(0));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("takes no arguments"));
+    }
+
+    @Test
+    void acceptsRuntimeShutdownHookWithNoArgs() {
+      EntitlementDeclaration entitlement = moduleEntitlement("runtime.shutdown_hook");
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void rejectsRuntimeShutdownHookWithArgs() {
+      // runtime.shutdown_hook takes no arguments
+      EntitlementDeclaration entitlement =
+          moduleEntitlement("runtime.shutdown_hook", stringArg("hook"));
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+
+      assertThat(result.hasErrors()).isTrue();
+      assertThat(result.diagnostics()).anyMatch(d -> d.message().contains("takes no arguments"));
+    }
+
+    @Test
+    void acceptsRuntimeExitWithPackageSubject() {
+      EntitlementDeclaration entitlement = entitlement("com.example.main", "runtime.exit");
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+
+    @Test
+    void acceptsRuntimeShutdownHookWithPackageSubject() {
+      EntitlementDeclaration entitlement =
+          entitlement("com.example.lifecycle", "runtime.shutdown_hook");
+      PolicyFile ast = policyFile(List.of("app"), List.of(entitlement));
+
+      PolicyValidator.ValidationResult result = validate(ast);
+      assertThat(result.isValid()).isTrue();
+    }
+  }
 }

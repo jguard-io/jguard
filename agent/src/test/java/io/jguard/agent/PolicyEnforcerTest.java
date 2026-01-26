@@ -1338,4 +1338,141 @@ class PolicyEnforcerTest {
           .doesNotThrowAnyException();
     }
   }
+
+  @Nested
+  @DisplayName("Runtime lifecycle operations (runtime.exit, runtime.shutdown_hook)")
+  class RuntimeLifecycleTest {
+
+    /** Helper for runtime.exit operations. */
+    private void checkRuntimeExit(PolicyEnforcer enforcer, CallerContext caller, int status) {
+      SecurityException denial = enforcer.check(caller, Operation.RUNTIME_EXIT, status, 0);
+      if (denial != null) {
+        throw denial;
+      }
+    }
+
+    /** Helper for runtime.shutdown_hook operations. */
+    private void checkShutdownHook(PolicyEnforcer enforcer, CallerContext caller) {
+      SecurityException denial = enforcer.check(caller, Operation.RUNTIME_SHUTDOWN_HOOK, null, 0);
+      if (denial != null) {
+        throw denial;
+      }
+    }
+
+    @Test
+    @DisplayName("allows runtime.exit when module is entitled")
+    void allowsRuntimeExit() {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("runtime.exit"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatCode(() -> checkRuntimeExit(enforcer, caller("com.example.app"), 0))
+          .doesNotThrowAnyException();
+      assertThatCode(() -> checkRuntimeExit(enforcer, caller("com.example.app"), 1))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("denies runtime.exit when not entitled")
+    void deniesRuntimeExit() {
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of());
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatThrownBy(() -> checkRuntimeExit(enforcer, caller("com.example.app"), 0))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("runtime.exit");
+    }
+
+    @Test
+    @DisplayName("respects package scope for runtime.exit")
+    void respectsPackageScopeForRuntimeExit() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.exactPackage("com.example.app.main"),
+              CapabilityGrant.of("runtime.exit"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Entitled package allowed
+      assertThatCode(() -> checkRuntimeExit(enforcer, caller("com.example.app.main"), 0))
+          .doesNotThrowAnyException();
+
+      // Other packages denied
+      assertThatThrownBy(() -> checkRuntimeExit(enforcer, caller("com.example.app"), 0))
+          .isInstanceOf(SecurityException.class);
+      assertThatThrownBy(() -> checkRuntimeExit(enforcer, caller("com.example.app.lib"), 0))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("allows runtime.shutdown_hook when module is entitled")
+    void allowsShutdownHook() {
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("runtime.shutdown_hook"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatCode(() -> checkShutdownHook(enforcer, caller("com.example.app")))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("denies runtime.shutdown_hook when not entitled")
+    void deniesShutdownHook() {
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of());
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatThrownBy(() -> checkShutdownHook(enforcer, caller("com.example.app")))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("runtime.shutdown_hook");
+    }
+
+    @Test
+    @DisplayName("respects package scope for runtime.shutdown_hook")
+    void respectsPackageScopeForShutdownHook() {
+      Entitlement entitlement =
+          new Entitlement(
+              SubjectPattern.recursive("com.example.app.lifecycle"),
+              CapabilityGrant.of("runtime.shutdown_hook"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Entitled package and subpackages allowed
+      assertThatCode(() -> checkShutdownHook(enforcer, caller("com.example.app.lifecycle")))
+          .doesNotThrowAnyException();
+      assertThatCode(() -> checkShutdownHook(enforcer, caller("com.example.app.lifecycle.impl")))
+          .doesNotThrowAnyException();
+
+      // Other packages denied
+      assertThatThrownBy(() -> checkShutdownHook(enforcer, caller("com.example.app")))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("runtime.exit and runtime.shutdown_hook are independent capabilities")
+    void exitAndShutdownHookAreIndependent() {
+      // Only grant runtime.exit, not runtime.shutdown_hook
+      Entitlement entitlement =
+          new Entitlement(SubjectPattern.module(), CapabilityGrant.of("runtime.exit"));
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // runtime.exit allowed
+      assertThatCode(() -> checkRuntimeExit(enforcer, caller("com.example.app"), 0))
+          .doesNotThrowAnyException();
+
+      // runtime.shutdown_hook denied (not granted)
+      assertThatThrownBy(() -> checkShutdownHook(enforcer, caller("com.example.app")))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("runtime.shutdown_hook");
+    }
+  }
 }
