@@ -609,7 +609,9 @@ class MultiModuleHotReloadTest {
           PROP_READ,
           PROP_WRITE,
           PROCESS_EXEC,
-          CRYPTO_PROVIDER ->
+          CRYPTO_PROVIDER,
+          RUNTIME_EXIT,
+          RUNTIME_SHUTDOWN_HOOK ->
           enforcer.check(caller, op, "test", 0);
     };
   }

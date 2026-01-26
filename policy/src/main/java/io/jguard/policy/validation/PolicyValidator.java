@@ -41,7 +41,7 @@ public final class PolicyValidator {
 
   // Known capabilities and their expected argument counts
   // Capabilities: fs.read/write/hardlink, network.outbound/listen, threads.create, native.load,
-  // env.read, system.property.read/write, process.exec, crypto.provider
+  // env.read, system.property.read/write, process.exec, crypto.provider, runtime.exit/shutdown_hook
   private static final Map<String, CapabilitySignature> KNOWN_CAPABILITIES =
       Map.ofEntries(
           Map.entry(
@@ -63,7 +63,9 @@ public final class PolicyValidator {
           Map.entry(
               "system.property.write", new CapabilitySignature(0, 1, List.of(ArgType.STRING))),
           Map.entry("process.exec", new CapabilitySignature(0, 1, List.of(ArgType.STRING))),
-          Map.entry("crypto.provider", new CapabilitySignature(0, 0, List.of())));
+          Map.entry("crypto.provider", new CapabilitySignature(0, 0, List.of())),
+          Map.entry("runtime.exit", new CapabilitySignature(0, 0, List.of())),
+          Map.entry("runtime.shutdown_hook", new CapabilitySignature(0, 0, List.of())));
 
   private final String sourcePath;
   private final List<CompilationResult.Diagnostic> diagnostics = new ArrayList<>();

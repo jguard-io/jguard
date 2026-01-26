@@ -68,4 +68,11 @@ security module io.jguard.samples.sandbox {
     // Note: Package name contains "security" to demonstrate contextual keywords work
     entitle io.jguard.samples.sandbox.security to crypto.provider;
 
+    // Grant runtime lifecycle control to lifecycle package
+    // These capabilities protect server uptime by controlling:
+    // - Who can terminate the JVM (prevents rogue libraries from calling System.exit())
+    // - Who can register shutdown hooks (prevents interference with graceful shutdown)
+    entitle io.jguard.samples.sandbox.lifecycle to runtime.exit;
+    entitle io.jguard.samples.sandbox.lifecycle to runtime.shutdown_hook;
+
 }

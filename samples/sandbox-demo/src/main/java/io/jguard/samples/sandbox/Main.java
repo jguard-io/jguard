@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import io.jguard.core.JGuard;
 import io.jguard.samples.sandbox.config.ConfigReader;
 import io.jguard.samples.sandbox.fs.HardLinkCreator;
+import io.jguard.samples.sandbox.lifecycle.LifecycleManager;
 import io.jguard.samples.sandbox.nativelib.NativeLoader;
 import io.jguard.samples.sandbox.net.NetworkClient;
 import io.jguard.samples.sandbox.net.NetworkServer;
@@ -186,6 +187,18 @@ public final class Main {
 
     // Test 29: Crypto provider modification from non-entitled package (NOT ENTITLED)
     demonstrateUnentitledCryptoProvider();
+
+    // Test 30: Shutdown hook registration from entitled package (ENTITLED)
+    demonstrateEntitledShutdownHook();
+
+    // Test 31: Shutdown hook registration from non-entitled package (NOT ENTITLED)
+    demonstrateUnentitledShutdownHook();
+
+    // Test 32: Runtime exit capability from entitled package (ENTITLED - demo only)
+    demonstrateEntitledRuntimeExit();
+
+    // Test 33: Runtime exit from non-entitled package (NOT ENTITLED)
+    demonstrateUnentitledRuntimeExit();
   }
 
   /**
@@ -935,6 +948,118 @@ public final class Main {
       java.security.Security.removeProvider("UnauthorizedProvider");
     } catch (SecurityException e) {
       System.out.println("  BLOCKED (expected): " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  // ========== RUNTIME LIFECYCLE CAPABILITY DEMONSTRATIONS ==========
+
+  /**
+   * Demonstrates shutdown hook registration from entitled package.
+   *
+   * <p>This operation IS entitled because it's called from the .lifecycle package which has
+   * runtime.shutdown_hook entitlement.
+   */
+  private static void demonstrateEntitledShutdownHook() {
+    System.out.println("[ENTITLED] runtime.shutdown_hook (from .lifecycle package)");
+    System.out.println("  Attempting to register and remove a shutdown hook...");
+
+    try {
+      // Register a hook
+      boolean registered =
+          LifecycleManager.registerShutdownHook(
+              "jguard-demo-hook", () -> System.out.println("Demo hook executed!"));
+
+      if (registered) {
+        System.out.println("  SUCCESS: Shutdown hook registered");
+
+        // Immediately remove it so it doesn't run during demo shutdown
+        boolean removed = LifecycleManager.removeShutdownHook();
+        if (removed) {
+          System.out.println("  SUCCESS: Shutdown hook removed");
+        }
+      }
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (unexpected): " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates shutdown hook registration from non-entitled package.
+   *
+   * <p>This operation is NOT entitled because Main is in the sandbox package, not the .lifecycle
+   * package. It should be blocked when the agent is active.
+   */
+  private static void demonstrateUnentitledShutdownHook() {
+    System.out.println("[NOT ENTITLED] runtime.shutdown_hook (from main package)");
+    System.out.println("  Attempting to register a shutdown hook directly...");
+
+    try {
+      Thread hook = new Thread(() -> System.out.println("Unauthorized hook!"), "unauthorized-hook");
+      Runtime.getRuntime().addShutdownHook(hook);
+      System.out.println("  SUCCESS: Hook registered (unexpected!)");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+      // Clean up
+      Runtime.getRuntime().removeShutdownHook(hook);
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (expected): " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates runtime.exit capability from entitled package.
+   *
+   * <p>This operation IS entitled because it's called from the .lifecycle package which has
+   * runtime.exit entitlement.
+   *
+   * <p>NOTE: We don't actually call System.exit() in the demo - that would terminate the JVM! This
+   * just shows that the package is entitled to make such calls.
+   */
+  private static void demonstrateEntitledRuntimeExit() {
+    System.out.println("[ENTITLED] runtime.exit (from .lifecycle package)");
+    System.out.println("  Demonstrating runtime.exit entitlement (not actually exiting)...");
+
+    try {
+      // This package is entitled to call System.exit() - we just document it
+      String message = LifecycleManager.demonstrateExitCapability(0);
+      System.out.println("  SUCCESS: " + message);
+      System.out.println("  (We don't actually call System.exit() in the demo)");
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (unexpected): " + e.getMessage());
+    }
+
+    System.out.println();
+  }
+
+  /**
+   * Demonstrates runtime.exit from non-entitled package.
+   *
+   * <p>This operation is NOT entitled because Main is in the sandbox package, not the .lifecycle
+   * package. It should be blocked when the agent is active.
+   *
+   * <p>NOTE: We use a special approach here - we catch the SecurityException before System.exit()
+   * can terminate the JVM.
+   */
+  private static void demonstrateUnentitledRuntimeExit() {
+    System.out.println("[NOT ENTITLED] runtime.exit (from main package)");
+    System.out.println("  Attempting to call System.exit(0) directly...");
+    System.out.println("  (This would terminate the JVM if not blocked!)");
+
+    try {
+      // In strict mode, this should be blocked BEFORE the JVM can exit
+      // The jGuard agent intercepts System.exit() and checks the capability
+      System.exit(0);
+      // If we get here, jGuard is not active
+      System.out.println("  SUCCESS: System.exit() was called (unexpected!)");
+      System.out.println("  (This should be BLOCKED when running with the agent!)");
+    } catch (SecurityException e) {
+      System.out.println("  BLOCKED (expected): " + e.getMessage());
+      System.out.println("  The JVM is still running because jGuard blocked the exit!");
     }
 
     System.out.println();

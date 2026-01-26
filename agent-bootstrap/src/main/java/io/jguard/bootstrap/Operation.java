@@ -118,7 +118,25 @@ public enum Operation {
    * <p>Guards: {@code Security.addProvider()}, {@code Security.insertProviderAt()}, {@code
    * Security.removeProvider()}, {@code Security.setProperty()}
    */
-  CRYPTO_PROVIDER("crypto.provider", Category.SIMPLE);
+  CRYPTO_PROVIDER("crypto.provider", Category.SIMPLE),
+
+  /**
+   * JVM exit.
+   *
+   * <p>Arguments: {@code arg0} = exit status (Integer), {@code arg1} = 0
+   *
+   * <p>Guards: {@code System.exit()}, {@code Runtime.exit()}, {@code Runtime.halt()}
+   */
+  RUNTIME_EXIT("runtime.exit", Category.SIMPLE),
+
+  /**
+   * Shutdown hook registration.
+   *
+   * <p>Arguments: {@code arg0} = null, {@code arg1} = 0
+   *
+   * <p>Guards: {@code Runtime.addShutdownHook()}, {@code Runtime.removeShutdownHook()}
+   */
+  RUNTIME_SHUTDOWN_HOOK("runtime.shutdown_hook", Category.SIMPLE);
 
   /**
    * Categories determine matching logic in PolicyEnforcer.

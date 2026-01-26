@@ -476,7 +476,12 @@ public final class AgentInitializer {
                     // System.clearProperty(String) - single property removal (write)
                     .visit(
                         Advice.to(PropertyInterceptor.ClearPropertyAdvice.class)
-                            .on(named("clearProperty").and(takesArgument(0, String.class)))))
+                            .on(named("clearProperty").and(takesArgument(0, String.class))))
+                    // ========== RUNTIME EXIT (runtime.exit) ==========
+                    // System.exit(int) - terminates the JVM
+                    .visit(
+                        Advice.to(RuntimeInterceptor.ExitAdvice.class)
+                            .on(named("exit").and(takesArgument(0, int.class)))))
         // Instrument java.lang.Runtime - native library loading and process execution
         .type(named("java.lang.Runtime"))
         .transform(
@@ -535,7 +540,25 @@ public final class AgentInitializer {
                                 named("exec")
                                     .and(takesArgument(0, String[].class))
                                     .and(takesArgument(1, String[].class))
-                                    .and(takesArgument(2, java.io.File.class)))))
+                                    .and(takesArgument(2, java.io.File.class))))
+                    // ========== RUNTIME EXIT (runtime.exit) ==========
+                    // Runtime.exit(int) - terminates the JVM
+                    .visit(
+                        Advice.to(RuntimeInterceptor.ExitAdvice.class)
+                            .on(named("exit").and(takesArgument(0, int.class))))
+                    // Runtime.halt(int) - forcefully terminates the JVM
+                    .visit(
+                        Advice.to(RuntimeInterceptor.HaltAdvice.class)
+                            .on(named("halt").and(takesArgument(0, int.class))))
+                    // ========== SHUTDOWN HOOKS (runtime.shutdown_hook) ==========
+                    // Runtime.addShutdownHook(Thread) - registers a shutdown hook
+                    .visit(
+                        Advice.to(RuntimeInterceptor.ShutdownHookAdvice.class)
+                            .on(named("addShutdownHook").and(takesArgument(0, Thread.class))))
+                    // Runtime.removeShutdownHook(Thread) - unregisters a shutdown hook
+                    .visit(
+                        Advice.to(RuntimeInterceptor.ShutdownHookAdvice.class)
+                            .on(named("removeShutdownHook").and(takesArgument(0, Thread.class)))))
         // ========== PROCESS BUILDER INSTRUMENTATION (process.exec) ==========
         .type(named("java.lang.ProcessBuilder"))
         .transform(

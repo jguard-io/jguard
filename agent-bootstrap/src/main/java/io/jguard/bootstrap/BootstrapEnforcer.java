@@ -355,6 +355,30 @@ public final class BootstrapEnforcer {
     dispatch(Operation.CRYPTO_PROVIDER, null, 0);
   }
 
+  // ========== RUNTIME EXIT ENTRY POINTS ==========
+
+  /**
+   * Called by ByteBuddy advice when a JVM exit operation is intercepted.
+   *
+   * <p>Guards {@code System.exit()}, {@code Runtime.exit()}, and {@code Runtime.halt()}.
+   *
+   * @param status the exit status code
+   */
+  public static void onRuntimeExit(int status) {
+    dispatch(Operation.RUNTIME_EXIT, status, 0);
+  }
+
+  // ========== SHUTDOWN HOOK ENTRY POINTS ==========
+
+  /**
+   * Called by ByteBuddy advice when a shutdown hook operation is intercepted.
+   *
+   * <p>Guards {@code Runtime.addShutdownHook()} and {@code Runtime.removeShutdownHook()}.
+   */
+  public static void onShutdownHook() {
+    dispatch(Operation.RUNTIME_SHUTDOWN_HOOK, null, 0);
+  }
+
   // ========== SINGLE DISPATCH ==========
 
   /**
