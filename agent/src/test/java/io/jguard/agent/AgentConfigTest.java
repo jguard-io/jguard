@@ -11,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.jguard.bootstrap.AgentConfig;
 import io.jguard.bootstrap.EnforcementMode;
+import java.nio.file.Path;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -93,6 +94,68 @@ class AgentConfigTest {
     void canBeSetToFalse() {
       AgentConfig config = builder().logDenied(false).build();
       assertThat(config.logDenied()).isFalse();
+    }
+  }
+
+  @Nested
+  @DisplayName("overrideDirs()")
+  class OverrideDirsTests {
+
+    @Test
+    @DisplayName("defaults to empty list")
+    void defaultsToEmptyList() {
+      AgentConfig config = builder().build();
+      assertThat(config.overrideDirs()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("single directory via overrideDir()")
+    void singleDirectoryViaOverrideDir() {
+      AgentConfig config = builder().overrideDir(Path.of("/etc/policies")).build();
+      assertThat(config.overrideDirs()).containsExactly(Path.of("/etc/policies"));
+    }
+
+    @Test
+    @DisplayName("multiple directories via addOverrideDir()")
+    void multipleDirectoriesViaAddOverrideDir() {
+      AgentConfig config =
+          builder()
+              .addOverrideDir(Path.of("/etc/policies"))
+              .addOverrideDir(Path.of("/app/test-policies"))
+              .build();
+      assertThat(config.overrideDirs())
+          .containsExactly(Path.of("/etc/policies"), Path.of("/app/test-policies"));
+    }
+
+    @Test
+    @DisplayName("overrideDir() clears previously added directories")
+    void overrideDirClearsPreviouslyAdded() {
+      AgentConfig config =
+          builder()
+              .addOverrideDir(Path.of("/first"))
+              .addOverrideDir(Path.of("/second"))
+              .overrideDir(Path.of("/only"))
+              .build();
+      assertThat(config.overrideDirs()).containsExactly(Path.of("/only"));
+    }
+
+    @Test
+    @DisplayName("overrideDir(null) clears all directories")
+    void overrideDirNullClearsAll() {
+      AgentConfig config =
+          builder()
+              .addOverrideDir(Path.of("/first"))
+              .addOverrideDir(Path.of("/second"))
+              .overrideDir(null)
+              .build();
+      assertThat(config.overrideDirs()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("list is immutable")
+    void listIsImmutable() {
+      AgentConfig config = builder().addOverrideDir(Path.of("/etc/policies")).build();
+      assertThat(config.overrideDirs()).isUnmodifiable();
     }
   }
 }

@@ -24,20 +24,25 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 /**
- * Discovers embedded jGuard policies from JARs on the module/class path.
+ * Discovers embedded jGuard policies from JARs and directories on the module/class path.
  *
- * <p>This class scans JARs for embedded policies at {@code META-INF/jguard/policy.bin} and builds
- * an {@link ApplicationPolicy} containing all discovered module policies.
+ * <p>This class scans for embedded policies at {@code META-INF/jguard/policy.bin} in both:
+ *
+ * <ul>
+ *   <li>JAR files (production deployments)
+ *   <li>Directory entries (development/testing with Gradle class directories)
+ * </ul>
  *
  * <h2>Security Model</h2>
  *
  * <p>By default, policies are only loaded from signed JARs. This prevents malicious unsigned code
  * from granting itself capabilities. The {@code jguard.allowUnsignedPolicies} system property can
- * be set to {@code true} for development/testing.
+ * be set to {@code true} for development/testing. Directory-based policies always require this flag
+ * since directories cannot be signed.
  *
  * <h2>Duplicate Detection</h2>
  *
- * <p>If two JARs contain policies for the same module name, discovery fails with a clear error.
+ * <p>If two entries contain policies for the same module name, discovery fails with a clear error.
  * This prevents confusion about which policy applies.
  */
 public final class PolicyDiscovery {
@@ -58,55 +63,18 @@ public final class PolicyDiscovery {
   public static ApplicationPolicy discoverEmbedded(AgentConfig config)
       throws PolicyDiscoveryException {
     List<ModulePolicy> policies = new ArrayList<>();
-    Map<String, String> moduleToJar = new HashMap<>(); // For duplicate detection
+    Map<String, String> moduleToSource = new HashMap<>(); // For duplicate detection
 
+    // Scan JAR files
     List<Path> jarPaths = findJarsOnPath();
     LOG.info("Scanning {} JARs for embedded policies", jarPaths.size());
+    discoverFromJars(config, jarPaths, policies, moduleToSource);
 
-    for (Path jarPath : jarPaths) {
-      try (JarFile jarFile = new JarFile(jarPath.toFile(), true)) { // true = verify signatures
-        if (!JarSignatureVerifier.hasEmbeddedPolicy(jarFile)) {
-          continue;
-        }
-
-        // Check signature (unless unsigned allowed)
-        if (!config.allowUnsignedPolicies()) {
-          if (!JarSignatureVerifier.isSignedAndValid(jarFile)) {
-            LOG.warn(
-                "Skipping unsigned JAR with embedded policy: {}. "
-                    + "Set -Djguard.allowUnsignedPolicies=true for development.",
-                jarPath);
-            continue;
-          }
-        } else {
-          LOG.debug("Allowing unsigned policy from {} (development mode)", jarPath);
-        }
-
-        // Read the embedded policy
-        ModulePolicy policy = readEmbeddedPolicy(jarFile);
-
-        // Check for duplicates
-        String existingJar = moduleToJar.get(policy.moduleName());
-        if (existingJar != null) {
-          throw new PolicyDiscoveryException(
-              String.format(
-                  "Duplicate policy for module '%s' found in:%n  - %s%n  - %s",
-                  policy.moduleName(), existingJar, jarPath));
-        }
-
-        moduleToJar.put(policy.moduleName(), jarPath.toString());
-        policies.add(policy);
-        LOG.info(
-            "Discovered policy for module '{}' from {} ({} entitlements)",
-            policy.moduleName(),
-            jarPath.getFileName(),
-            policy.entitlements().size());
-
-      } catch (IOException e) {
-        LOG.warn("Failed to read JAR {}: {}", jarPath, e.getMessage());
-      } catch (SecurityException e) {
-        LOG.warn("JAR {} failed signature verification: {}", jarPath, e.getMessage());
-      }
+    // Scan directory entries (for development/testing with Gradle class directories)
+    List<Path> dirPaths = findDirectoriesOnPath();
+    if (!dirPaths.isEmpty()) {
+      LOG.info("Scanning {} directories for embedded policies", dirPaths.size());
+      discoverFromDirectories(config, dirPaths, policies, moduleToSource);
     }
 
     // Add unnamed module policy if configured
@@ -123,12 +91,12 @@ public final class PolicyDiscovery {
         }
 
         // Check for duplicates
-        String existingJar = moduleToJar.get(unnamedPolicy.moduleName());
-        if (existingJar != null) {
+        String existingSource = moduleToSource.get(unnamedPolicy.moduleName());
+        if (existingSource != null) {
           throw new PolicyDiscoveryException(
               String.format(
                   "Duplicate policy for module '%s' found in:%n  - %s%n  - %s (external)",
-                  unnamedPolicy.moduleName(), existingJar, config.unnamedModulePolicy()));
+                  unnamedPolicy.moduleName(), existingSource, config.unnamedModulePolicy()));
         }
 
         policies.add(unnamedPolicy);
@@ -153,6 +121,156 @@ public final class PolicyDiscovery {
     }
 
     return ApplicationPolicy.create(policies);
+  }
+
+  /**
+   * Discovers policies from JAR files.
+   *
+   * @param config the agent configuration
+   * @param jarPaths the JAR files to scan
+   * @param policies the list to add discovered policies to
+   * @param moduleToSource map for duplicate detection
+   * @throws PolicyDiscoveryException if a duplicate module is found
+   */
+  private static void discoverFromJars(
+      AgentConfig config,
+      List<Path> jarPaths,
+      List<ModulePolicy> policies,
+      Map<String, String> moduleToSource)
+      throws PolicyDiscoveryException {
+
+    for (Path jarPath : jarPaths) {
+      try (JarFile jarFile = new JarFile(jarPath.toFile(), true)) { // true = verify signatures
+        if (!JarSignatureVerifier.hasEmbeddedPolicy(jarFile)) {
+          continue;
+        }
+
+        // Check signature (unless unsigned allowed)
+        if (!config.allowUnsignedPolicies()) {
+          if (!JarSignatureVerifier.isSignedAndValid(jarFile)) {
+            LOG.warn(
+                "Skipping unsigned JAR with embedded policy: {}. "
+                    + "Set -Djguard.allowUnsignedPolicies=true for development.",
+                jarPath);
+            continue;
+          }
+        } else {
+          LOG.debug("Allowing unsigned policy from {} (development mode)", jarPath);
+        }
+
+        // Read the embedded policy
+        ModulePolicy policy = readEmbeddedPolicy(jarFile);
+
+        // Check for duplicates
+        String existingSource = moduleToSource.get(policy.moduleName());
+        if (existingSource != null) {
+          throw new PolicyDiscoveryException(
+              String.format(
+                  "Duplicate policy for module '%s' found in:%n  - %s%n  - %s",
+                  policy.moduleName(), existingSource, jarPath));
+        }
+
+        moduleToSource.put(policy.moduleName(), jarPath.toString());
+        policies.add(policy);
+        LOG.info(
+            "Discovered policy for module '{}' from {} ({} entitlements)",
+            policy.moduleName(),
+            jarPath.getFileName(),
+            policy.entitlements().size());
+
+      } catch (IOException e) {
+        LOG.warn("Failed to read JAR {}: {}", jarPath, e.getMessage());
+      } catch (SecurityException e) {
+        LOG.warn("JAR {} failed signature verification: {}", jarPath, e.getMessage());
+      }
+    }
+  }
+
+  /**
+   * Discovers policies from directory entries on the classpath.
+   *
+   * <p>This supports development/testing scenarios where Gradle outputs compiled policies to class
+   * directories rather than JARs.
+   *
+   * @param config the agent configuration
+   * @param dirPaths the directories to scan
+   * @param policies the list to add discovered policies to
+   * @param moduleToSource map for duplicate detection
+   * @throws PolicyDiscoveryException if a duplicate module is found
+   */
+  private static void discoverFromDirectories(
+      AgentConfig config,
+      List<Path> dirPaths,
+      List<ModulePolicy> policies,
+      Map<String, String> moduleToSource)
+      throws PolicyDiscoveryException {
+
+    for (Path dirPath : dirPaths) {
+      Path policyFile = dirPath.resolve(JarSignatureVerifier.POLICY_LOCATION);
+      if (!Files.exists(policyFile)) {
+        continue;
+      }
+
+      // Directory-based policies require allowUnsignedPolicies since directories can't be signed
+      if (!config.allowUnsignedPolicies()) {
+        LOG.warn(
+            "Skipping directory-based policy at {}. "
+                + "Set -Djguard.allowUnsignedPolicies=true for development.",
+            policyFile);
+        continue;
+      }
+
+      try {
+        ModulePolicy policy = readPolicyFromDirectory(policyFile);
+
+        // Check for duplicates
+        String existingSource = moduleToSource.get(policy.moduleName());
+        if (existingSource != null) {
+          throw new PolicyDiscoveryException(
+              String.format(
+                  "Duplicate policy for module '%s' found in:%n  - %s%n  - %s",
+                  policy.moduleName(), existingSource, dirPath));
+        }
+
+        moduleToSource.put(policy.moduleName(), dirPath.toString());
+        policies.add(policy);
+        LOG.info(
+            "Discovered policy for module '{}' from directory {} ({} entitlements)",
+            policy.moduleName(),
+            dirPath,
+            policy.entitlements().size());
+
+      } catch (IOException e) {
+        LOG.warn("Failed to read policy from directory {}: {}", dirPath, e.getMessage());
+      }
+    }
+  }
+
+  /**
+   * Reads an embedded policy from a directory (for development/testing).
+   *
+   * @param policyFile the path to the policy.bin file
+   * @return the module policy
+   * @throws IOException if the policy cannot be read
+   */
+  private static ModulePolicy readPolicyFromDirectory(Path policyFile) throws IOException {
+    try (InputStream is = Files.newInputStream(policyFile)) {
+      ApplicationPolicy appPolicy = BinaryPolicyReader.readApplicationPolicy(is);
+
+      // Embedded policies should contain exactly one module
+      if (appPolicy.modules().isEmpty()) {
+        throw new IOException("Policy file contains no modules: " + policyFile);
+      }
+      if (appPolicy.modules().size() > 1) {
+        throw new IOException(
+            "Policy file contains multiple modules ("
+                + appPolicy.modules().size()
+                + "). Each directory should contain policy for one module: "
+                + policyFile);
+      }
+
+      return appPolicy.modules().get(0);
+    }
   }
 
   /**
@@ -259,6 +377,54 @@ public final class PolicyDiscovery {
         } catch (IOException e) {
           LOG.debug("Failed to scan directory {}: {}", path, e.getMessage());
         }
+      }
+    }
+  }
+
+  /**
+   * Finds all directories on the module path and class path.
+   *
+   * <p>This supports development/testing scenarios where classes are in directories rather than
+   * JARs (e.g., Gradle's {@code build/classes/java/main}).
+   *
+   * @return list of directory paths
+   */
+  private static List<Path> findDirectoriesOnPath() {
+    List<Path> dirs = new ArrayList<>();
+
+    // Module path
+    String modulePath = System.getProperty("jdk.module.path");
+    if (modulePath != null && !modulePath.isBlank()) {
+      addDirectoriesFromPath(modulePath, dirs);
+    }
+
+    // Class path
+    String classPath = System.getProperty("java.class.path");
+    if (classPath != null && !classPath.isBlank()) {
+      addDirectoriesFromPath(classPath, dirs);
+    }
+
+    return dirs;
+  }
+
+  /**
+   * Adds directories from a path string to the list.
+   *
+   * @param pathString the path string (colon or semicolon separated)
+   * @param dirs the list to add to
+   */
+  private static void addDirectoriesFromPath(String pathString, List<Path> dirs) {
+    String separator = System.getProperty("path.separator", ":");
+    String[] entries = pathString.split(separator);
+
+    for (String entry : entries) {
+      if (entry.isBlank()) continue;
+
+      Path path = Path.of(entry);
+      if (Files.isDirectory(path)) {
+        // Only add if it's directly a class directory (not a directory containing JARs)
+        // We look for directories that might contain META-INF/jguard/policy.bin
+        dirs.add(path);
       }
     }
   }

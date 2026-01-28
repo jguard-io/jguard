@@ -5,6 +5,20 @@ All notable changes to jGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - Unreleased
+
+### Added
+
+- **Test-specific policy overrides**: New `src/test/jguard/` directory support for test-only policies. Test policies extend embedded policies with additional permissions needed during testing (e.g., temp file access, thread creation). Policies are compiled by the `compileTestPolicies` task and automatically passed to the agent during test execution.
+- **Multi-directory policy overrides**: The agent now supports comma-separated paths in `-Djguard.policy.override`, allowing layered policy overrides. Later directories take precedence.
+
+### Fixed
+
+- **Gradle plugin configuration conflict**: Fixed `jguardAgent` configuration creation to use `maybeCreate()` instead of `create()`, avoiding conflicts when other plugins create the configuration first. This was blocking the per-module `module-info.jguard` workflow in multi-module builds.
+- **Embedded policies not discovered during tests**: Fixed policy discovery for tests by outputting compiled policies to `build/jguard-policy/META-INF/jguard/` and registering this directory with `sourceSets.main.output.dir()`. This ensures policies are on the test classpath and properly packaged into JARs.
+- **Gradle cross-project dependency ordering**: Fixed `compileJGuardPolicy` task lifecycle wiring. Policies now output to a dedicated `build/jguard-policy/` directory (avoiding conflicts with `compileJava`'s output), registered via `sourceSets.main.output.dir(builtBy: compileJGuardPolicy)`. This ensures cross-project dependencies (via `project(':other')`) automatically wait for policy compilation.
+- **Directory-based policy discovery**: Fixed agent to discover embedded policies from directories on the classpath, not just JAR files. This enables policy discovery during development/testing when using Gradle class directories (`build/classes/java/main`).
+
 ## [0.3.1] - 2026-01-30
 
 ### Fixed
