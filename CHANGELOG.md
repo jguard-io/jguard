@@ -5,7 +5,20 @@ All notable changes to jGuard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - Unreleased
+## [0.3.1] - Unreleased
+
+### Fixed
+
+- **Classpath module resolution**: Fixed a bug where the presence of a `_global.jguard` file prevented package-prefix matching from working. Now per-module policies are correctly resolved on the classpath by matching caller packages against module names.
+- **JDK internal native library loading**: Fixed crash when JDK loads native libraries (e.g., `extnet` for macOS sockets) with user code on the call stack. jGuard now detects when the immediate caller of `System.loadLibrary()` is JDK code and allows it without requiring user entitlements. This fixes network operations on classpath that previously required explicit `native.load("extnet")` entitlements.
+- **Windows non-default filesystem paths**: Fixed `InvalidPathException` on Windows when checking paths from non-default filesystem providers (e.g., ZipFS). Windows drive paths like `/C:/Users/...` are now correctly normalized.
+
+### Changed
+
+- Classpath module resolution now tries package-prefix matching **before** falling back to the "unnamed" module policy from `_global.jguard`.
+- `native.load` checks now allow JDK internal library loads (java.*, jdk.*, sun.*, com.sun.*) automatically.
+
+## [0.3.0] - 2026-01-28
 
 ### Added
 

@@ -291,11 +291,59 @@ public final class BootstrapEnforcer {
   /**
    * Called by ByteBuddy advice when a native library is being loaded.
    *
+   * <p>Special handling: If the immediate caller of System.loadLibrary is JDK code (java.*, jdk.*,
+   * sun.*, com.sun.*), we allow the load without checking user entitlements. This is because the
+   * JDK often loads native libraries as an internal implementation detail (e.g., network, crypto)
+   * and user code shouldn't need to explicitly grant native.load for JDK internals.
+   *
    * @param libraryName the name of the library being loaded
    */
   public static void onNativeLoad(String libraryName) {
+    // Check if the immediate caller is JDK code loading its own libraries.
+    // Stack: [0]=this method, [1]=System.loadLibrary, [2]=actual caller
+    // If the actual caller is JDK code, allow it - JDK is loading its own internal libraries.
+    if (isJdkInternalLibraryLoad()) {
+      LOG.debug("Allowing JDK internal native library load: {}", libraryName);
+      return;
+    }
+
     String libName = libraryName != null ? libraryName : "unknown";
     dispatch(Operation.NATIVE_LOAD, libName, 0);
+  }
+
+  /**
+   * Checks if the current native library load is being done by JDK internal code.
+   *
+   * <p>This looks at the immediate caller of System.loadLibrary (not the deep application caller)
+   * to determine if the JDK itself is loading a library for its internal use.
+   *
+   * @return true if this is a JDK-internal library load
+   */
+  private static boolean isJdkInternalLibraryLoad() {
+    return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
+        .walk(
+            frames ->
+                frames
+                    .skip(2) // Skip this method and onNativeLoad
+                    .findFirst()
+                    .map(StackWalker.StackFrame::getDeclaringClass)
+                    .map(Class::getName)
+                    .map(BootstrapEnforcer::isJdkInternalClass)
+                    .orElse(false));
+  }
+
+  /**
+   * Checks if a class name belongs to JDK internal packages.
+   *
+   * @param className the fully qualified class name
+   * @return true if the class is JDK internal
+   */
+  private static boolean isJdkInternalClass(String className) {
+    return className.startsWith("java.")
+        || className.startsWith("javax.")
+        || className.startsWith("jdk.")
+        || className.startsWith("sun.")
+        || className.startsWith("com.sun.");
   }
 
   // ========== ENVIRONMENT VARIABLE ENTRY POINTS ==========
