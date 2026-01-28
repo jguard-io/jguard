@@ -141,7 +141,7 @@ public final class PolicyEnforcer {
     }
 
     // Look up the policy for this module
-    Optional<ModulePolicy> modulePolicy = getModulePolicy(callerModule);
+    Optional<ModulePolicy> modulePolicy = getModulePolicy(callerModule, callerPackage);
     if (modulePolicy.isEmpty()) {
       LOG.debug("No policy for module: {}", callerModule);
       return deniedNoPolicy(callerPackage, callerModule, formatDetails(op, arg0, arg1));
@@ -195,21 +195,60 @@ public final class PolicyEnforcer {
    *
    * <ul>
    *   <li>Named JPMS modules: exact match by module name
-   *   <li>Unnamed module (classpath): For backward compatibility with single-module apps, unnamed
-   *       callers use the single policy if there's only one module. For multi-module apps, unnamed
-   *       callers need an explicit "unnamed" policy.
+   *   <li>Unnamed module (classpath): resolves module identity by matching the caller's package
+   *       against loaded module names using longest-prefix matching. This enables per-module policy
+   *       files to work on the classpath using the same {@code module-info.jguard} files that work
+   *       on the module path.
    * </ul>
+   *
+   * <h2>Classpath Module Resolution</h2>
+   *
+   * <p>On the module path, JPMS provides the module name directly via {@code
+   * clazz.getModule().getName()}. On the classpath, all code is in the unnamed module. This method
+   * bridges the gap by matching the caller's package name against known module names using the
+   * standard Java convention that module names match their root package.
+   *
+   * <p>For example, a caller from package {@code io.lucenia.core.search} matches module {@code
+   * io.lucenia.core} because the module name is a prefix of the package name. If both {@code
+   * io.lucenia} and {@code io.lucenia.core} are loaded, the longest prefix wins.
+   *
+   * @param callerModule the caller's module name ("unnamed" for classpath code)
+   * @param callerPackage the caller's package name (used for classpath fallback)
    */
-  private Optional<ModulePolicy> getModulePolicy(String callerModule) {
-    // First try exact match
-    Optional<ModulePolicy> exact = policy.getModule(callerModule);
-    if (exact.isPresent()) {
-      return exact;
-    }
-
-    // For unnamed modules (classpath code)
+  private Optional<ModulePolicy> getModulePolicy(String callerModule, String callerPackage) {
+    // For unnamed modules (classpath code), try classpath resolution first
+    // before falling back to the explicit "unnamed" policy.
+    // This is intentionally checked BEFORE exact match because we want
+    // per-module policies to take precedence over the global fallback.
     if ("unnamed".equals(callerModule)) {
-      // Check for explicit "unnamed" policy first
+      // Classpath module resolution: match caller package against known module names.
+      // Uses longest-prefix matching so io.lucenia.core wins over io.lucenia
+      // for a caller in io.lucenia.core.search.
+      // This is checked BEFORE the explicit "unnamed" policy because per-module
+      // policies should take precedence over the global fallback.
+      ModulePolicy bestMatch = null;
+      int bestLength = 0;
+      for (ModulePolicy module : policy.modules()) {
+        String moduleName = module.moduleName();
+        // Skip the "unnamed" module itself - we want to match against real module names
+        if (ApplicationPolicy.UNNAMED_MODULE.equals(moduleName)) {
+          continue;
+        }
+        if ((callerPackage.equals(moduleName) || callerPackage.startsWith(moduleName + "."))
+            && moduleName.length() > bestLength) {
+          bestMatch = module;
+          bestLength = moduleName.length();
+        }
+      }
+      if (bestMatch != null) {
+        LOG.debug(
+            "Classpath module resolution: package={} -> module={}",
+            callerPackage,
+            bestMatch.moduleName());
+        return Optional.of(bestMatch);
+      }
+
+      // Fall back to explicit "unnamed" policy (from _global.jguard)
       Optional<ModulePolicy> unnamed = policy.getModule(ApplicationPolicy.UNNAMED_MODULE);
       if (unnamed.isPresent()) {
         return unnamed;
@@ -223,9 +262,13 @@ public final class PolicyEnforcer {
             policy.modules().get(0).moduleName());
         return Optional.of(policy.modules().get(0));
       }
+
+      // No match found for unnamed module
+      return Optional.empty();
     }
 
-    return Optional.empty();
+    // For named JPMS modules, try exact match by module name
+    return policy.getModule(callerModule);
   }
 
   // ========== CATEGORY-BASED DISPATCH ==========
@@ -259,7 +302,7 @@ public final class PolicyEnforcer {
       String callerPackage, String callerModule, Operation op, Object arg0, int arg1) {
     String base = callerPackage + ":" + callerModule + ":" + op.capabilityName();
     return switch (op.category()) {
-      case FILESYSTEM -> base + ":" + ((Path) arg0).toAbsolutePath();
+      case FILESYSTEM -> base + ":" + toDefaultFilesystem((Path) arg0).toAbsolutePath();
       case SIMPLE -> base;
       case PORT -> base + ":" + arg1; // Include port for caching
       case TARGET_PATTERN -> base + ":" + (arg0 != null ? arg0 : "any");
@@ -599,7 +642,7 @@ public final class PolicyEnforcer {
       List<Entitlement> entitlements,
       Path path,
       String capability) {
-    Path absPath = path.toAbsolutePath().normalize();
+    Path absPath = toDefaultFilesystem(path).toAbsolutePath().normalize();
 
     // Check all entitlements that apply to this caller
     for (Entitlement entitlement : entitlements) {
@@ -662,6 +705,49 @@ public final class PolicyEnforcer {
     // Check there's exactly one more segment
     String remainder = child.substring(parent.length() + 1);
     return !remainder.contains(".");
+  }
+
+  /**
+   * Converts a path to the default filesystem.
+   *
+   * <p>This handles cases where paths come from wrapped or custom filesystem providers (e.g.,
+   * Lucene's {@code FilterFileSystem}/{@code FilterPath}) to avoid {@code
+   * ProviderMismatchException} when comparing with policy-defined paths, which always resolve on
+   * the default filesystem via {@code Path.of()}.
+   *
+   * @param path the path to normalize
+   * @return a path on the default filesystem with the same string representation
+   */
+  private static Path toDefaultFilesystem(Path path) {
+    if (path.getFileSystem() == FileSystems.getDefault()) {
+      return path;
+    }
+    // Convert via string representation to the default filesystem.
+    // Wrapper paths (FilterPath, etc.) provide string representations
+    // that are valid for the default filesystem.
+    String pathStr = path.toAbsolutePath().normalize().toString();
+
+    // On Windows, ZipFS paths use forward slashes and may have a leading slash
+    // before the drive letter (e.g., "/C:/Users/..."). We need to strip the
+    // leading slash to get a valid Windows path.
+    if (isWindowsDrivePathWithLeadingSlash(pathStr)) {
+      pathStr = pathStr.substring(1);
+    }
+
+    return Path.of(pathStr);
+  }
+
+  /**
+   * Checks if a path string looks like a Windows drive path with a leading slash (e.g.,
+   * "/C:/Users/..."). This happens when a Windows path is converted to a ZipFS path and back.
+   */
+  private static boolean isWindowsDrivePathWithLeadingSlash(String pathStr) {
+    // Pattern: /X:/ where X is a drive letter
+    return pathStr.length() >= 4
+        && pathStr.charAt(0) == '/'
+        && Character.isLetter(pathStr.charAt(1))
+        && pathStr.charAt(2) == ':'
+        && (pathStr.charAt(3) == '/' || pathStr.charAt(3) == '\\');
   }
 
   private boolean pathMatches(Path absPath, String root, String glob) {
