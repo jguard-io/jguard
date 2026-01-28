@@ -36,3 +36,43 @@ tasks.named("runWithAgent") {
   // Ensure all module JARs are built with embedded policies
   dependsOn(":core:jar", ":network:jar", ":security:jar")
 }
+
+// Test task: run on CLASSPATH instead of module path
+// This tests that embedded module-info.jguard policies work with classpath module resolution
+tasks.register("runWithAgentClasspath", JavaExec) {
+  description = "Run with jGuard agent on CLASSPATH (not module path)"
+  group = "jguard"
+
+  def jguardBuild = gradle.includedBuild("jguard")
+  dependsOn(jguardBuild.task(":agent:shadowJar"))
+  dependsOn(":core:jar", ":network:jar", ":security:jar", "jar")
+
+  def agentJar = jguardBuild.projectDir.toPath()
+    .resolve("agent/build/libs/jguard-agent-${rootProject.findProperty('jguardVersion') ?: '0.3.1-SNAPSHOT'}.jar")
+    .toFile()
+
+  mainClass = "io.jguard.samples.multimodule.app.Main"
+  // NO mainModule - run on classpath!
+
+  // Use JARs instead of classes directories so embedded policies are discovered.
+  // This simulates how the app would actually run in production (from JARs).
+  classpath = files(
+    tasks.named("jar"),                          // app.jar (with embedded policy)
+    project(":core").tasks.named("jar"),         // core.jar
+    project(":network").tasks.named("jar"),      // network.jar
+    project(":security").tasks.named("jar"),     // security.jar
+    configurations.runtimeClasspath.filter { !it.name.startsWith("core") && !it.name.startsWith("network") && !it.name.startsWith("security") }
+  )
+
+  jvmArgs = [
+    "-javaagent:${agentJar}",
+    "-Djguard.mode=strict",
+    "-Djguard.policy.allowUnsigned=true"
+  ]
+
+  doFirst {
+    println "Running on CLASSPATH (not module path) with jGuard agent..."
+    println "  Agent: ${agentJar}"
+    println "  This tests classpath module resolution with embedded policies"
+  }
+}
