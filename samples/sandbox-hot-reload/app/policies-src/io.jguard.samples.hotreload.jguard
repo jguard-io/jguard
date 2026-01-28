@@ -5,5 +5,4 @@ security module io.jguard.samples.hotreload {
     entitle module to fs.read("data", "**");
     entitle module to network.outbound;
     entitle module to system.property.read;
-    // NOTE: native.load is NOT granted
 }

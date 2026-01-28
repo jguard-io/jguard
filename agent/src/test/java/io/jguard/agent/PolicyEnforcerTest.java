@@ -18,10 +18,15 @@ import io.jguard.policy.model.ApplicationPolicy;
 import io.jguard.policy.model.CapabilityArgument;
 import io.jguard.policy.model.CapabilityGrant;
 import io.jguard.policy.model.Entitlement;
+import io.jguard.policy.model.ModulePolicy;
 import io.jguard.policy.model.PolicyDescriptor;
 import io.jguard.policy.model.SubjectPattern;
+import java.net.URI;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -660,6 +665,352 @@ class PolicyEnforcerTest {
       // Different port denied
       assertThatThrownBy(() -> checkNetworkListen(enforcer, caller("com.example.app"), 9090))
           .isInstanceOf(SecurityException.class);
+    }
+  }
+
+  @Nested
+  @DisplayName("Classpath module resolution")
+  class ClasspathModuleResolutionTest {
+
+    @Test
+    @DisplayName("resolves module by package prefix for unnamed callers")
+    void resolvesModuleByPackagePrefix() {
+      // Two modules with different entitlements
+      ModulePolicy coreModule =
+          new ModulePolicy(
+              "io.lucenia.core",
+              List.of(new Entitlement(SubjectPattern.module(), fsReadCapability(dataRoot, "**"))));
+      ModulePolicy searchModule =
+          new ModulePolicy(
+              "io.lucenia.search",
+              List.of(
+                  new Entitlement(SubjectPattern.module(), CapabilityGrant.of("threads.create"))));
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(coreModule, searchModule));
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Unnamed caller from io.lucenia.core.store → matches io.lucenia.core → gets fs.read
+      assertThatCode(
+              () -> checkFsRead(enforcer, caller("io.lucenia.core.store", "unnamed"), dataSubFile))
+          .doesNotThrowAnyException();
+
+      // Unnamed caller from io.lucenia.search.engine → matches io.lucenia.search → gets
+      // threads.create
+      assertThatCode(
+              () ->
+                  checkOperation(
+                      enforcer,
+                      caller("io.lucenia.search.engine", "unnamed"),
+                      Operation.THREAD_CREATE))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("enforces isolation between modules on classpath")
+    void enforcesIsolationOnClasspath() {
+      // core has fs.read, search has threads.create
+      ModulePolicy coreModule =
+          new ModulePolicy(
+              "io.lucenia.core",
+              List.of(new Entitlement(SubjectPattern.module(), fsReadCapability(dataRoot, "**"))));
+      ModulePolicy searchModule =
+          new ModulePolicy(
+              "io.lucenia.search",
+              List.of(
+                  new Entitlement(SubjectPattern.module(), CapabilityGrant.of("threads.create"))));
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(coreModule, searchModule));
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // core caller should NOT get threads.create (that's search's entitlement)
+      assertThatThrownBy(
+              () ->
+                  checkOperation(
+                      enforcer,
+                      caller("io.lucenia.core.index", "unnamed"),
+                      Operation.THREAD_CREATE))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("threads.create");
+
+      // search caller should NOT get fs.read (that's core's entitlement)
+      assertThatThrownBy(
+              () -> checkFsRead(enforcer, caller("io.lucenia.search.engine", "unnamed"), dataFile))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("fs.read");
+    }
+
+    @Test
+    @DisplayName("uses longest prefix match for ambiguous modules")
+    void usesLongestPrefixMatch() {
+      // io.lucenia has threads.create, io.lucenia.core has fs.read
+      ModulePolicy parentModule =
+          new ModulePolicy(
+              "io.lucenia",
+              List.of(
+                  new Entitlement(SubjectPattern.module(), CapabilityGrant.of("threads.create"))));
+      ModulePolicy childModule =
+          new ModulePolicy(
+              "io.lucenia.core",
+              List.of(new Entitlement(SubjectPattern.module(), fsReadCapability(dataRoot, "**"))));
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(parentModule, childModule));
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Caller from io.lucenia.core.store → longest match is io.lucenia.core → gets fs.read
+      assertThatCode(
+              () -> checkFsRead(enforcer, caller("io.lucenia.core.store", "unnamed"), dataSubFile))
+          .doesNotThrowAnyException();
+
+      // But io.lucenia.core caller should NOT get threads.create (that's io.lucenia's)
+      assertThatThrownBy(
+              () ->
+                  checkOperation(
+                      enforcer,
+                      caller("io.lucenia.core.store", "unnamed"),
+                      Operation.THREAD_CREATE))
+          .isInstanceOf(SecurityException.class);
+
+      // Caller from io.lucenia.transport → matches io.lucenia → gets threads.create
+      assertThatCode(
+              () ->
+                  checkOperation(
+                      enforcer,
+                      caller("io.lucenia.transport.netty", "unnamed"),
+                      Operation.THREAD_CREATE))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("falls back to unnamed/_global for unmatched packages")
+    void fallsBackToGlobalForUnmatchedPackages() {
+      // Module policy for lucenia, plus an unnamed/_global policy for test infra
+      ModulePolicy luceniaModule =
+          new ModulePolicy(
+              "io.lucenia.core",
+              List.of(new Entitlement(SubjectPattern.module(), fsReadCapability(dataRoot, "**"))));
+      ModulePolicy unnamedModule =
+          new ModulePolicy(
+              "unnamed",
+              List.of(
+                  new Entitlement(SubjectPattern.module(), CapabilityGrant.of("threads.create"))));
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(luceniaModule, unnamedModule));
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // org.junit doesn't match any module → falls back to unnamed policy
+      assertThatCode(
+              () ->
+                  checkOperation(
+                      enforcer,
+                      caller("org.junit.jupiter.engine", "unnamed"),
+                      Operation.THREAD_CREATE))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("denies unmatched packages when no unnamed policy exists")
+    void deniesUnmatchedWithoutGlobal() {
+      // Multiple module policies but no unnamed/global fallback.
+      // (Need 2+ modules to avoid the single-module backward compat fallback.)
+      ModulePolicy coreModule =
+          new ModulePolicy(
+              "io.lucenia.core",
+              List.of(new Entitlement(SubjectPattern.module(), fsReadCapability(dataRoot, "**"))));
+      ModulePolicy searchModule =
+          new ModulePolicy(
+              "io.lucenia.search",
+              List.of(
+                  new Entitlement(SubjectPattern.module(), CapabilityGrant.of("threads.create"))));
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(coreModule, searchModule));
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // org.junit doesn't match any module and no unnamed policy → denied
+      assertThatThrownBy(
+              () ->
+                  checkOperation(
+                      enforcer,
+                      caller("org.junit.jupiter.engine", "unnamed"),
+                      Operation.THREAD_CREATE))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("no policy");
+    }
+
+    @Test
+    @DisplayName("exact package match works (caller package equals module name)")
+    void exactPackageMatch() {
+      ModulePolicy module =
+          new ModulePolicy(
+              "io.lucenia.core",
+              List.of(
+                  new Entitlement(SubjectPattern.module(), CapabilityGrant.of("threads.create"))));
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(module));
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Caller package IS the module name (not a subpackage)
+      assertThatCode(
+              () ->
+                  checkOperation(
+                      enforcer, caller("io.lucenia.core", "unnamed"), Operation.THREAD_CREATE))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("does not match partial package segments")
+    void doesNotMatchPartialSegments() {
+      // Module is "io.lucenia.core" — should NOT match "io.lucenia.corefoo".
+      // Need 2+ modules to avoid the single-module backward compat fallback.
+      ModulePolicy coreModule =
+          new ModulePolicy(
+              "io.lucenia.core",
+              List.of(
+                  new Entitlement(SubjectPattern.module(), CapabilityGrant.of("threads.create"))));
+      ModulePolicy searchModule =
+          new ModulePolicy(
+              "io.lucenia.search",
+              List.of(
+                  new Entitlement(
+                      SubjectPattern.module(), CapabilityGrant.of("network.outbound"))));
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(coreModule, searchModule));
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // "io.lucenia.corefoo" starts with "io.lucenia.core" as a string, but NOT as a package
+      // prefix — it's a different package hierarchy, not a subpackage
+      assertThatThrownBy(
+              () ->
+                  checkOperation(
+                      enforcer, caller("io.lucenia.corefoo", "unnamed"), Operation.THREAD_CREATE))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("no policy");
+    }
+
+    @Test
+    @DisplayName("named JPMS modules still use exact module match, not package prefix")
+    void namedModulesUseExactMatch() {
+      ModulePolicy module =
+          new ModulePolicy(
+              "io.lucenia.core",
+              List.of(
+                  new Entitlement(SubjectPattern.module(), CapabilityGrant.of("threads.create"))));
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(module));
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Named module with matching name → works
+      assertThatCode(
+              () ->
+                  checkOperation(
+                      enforcer,
+                      caller("io.lucenia.core.store", "io.lucenia.core"),
+                      Operation.THREAD_CREATE))
+          .doesNotThrowAnyException();
+
+      // Named module with wrong name → denied (package prefix fallback NOT used for named modules)
+      assertThatThrownBy(
+              () ->
+                  checkOperation(
+                      enforcer,
+                      caller("io.lucenia.core.store", "some.other.module"),
+                      Operation.THREAD_CREATE))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("no policy");
+    }
+
+    @Test
+    @DisplayName("respects package-scoped entitlements within resolved module")
+    void respectsPackageScopingInResolvedModule() {
+      // Module with package-specific entitlement
+      ModulePolicy module =
+          new ModulePolicy(
+              "io.lucenia.core",
+              List.of(
+                  new Entitlement(
+                      SubjectPattern.exactPackage("io.lucenia.core.store"),
+                      fsReadCapability(dataRoot, "**"))));
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(module));
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // Entitled package → allowed
+      assertThatCode(
+              () -> checkFsRead(enforcer, caller("io.lucenia.core.store", "unnamed"), dataSubFile))
+          .doesNotThrowAnyException();
+
+      // Different package in same module → denied (no entitlement)
+      assertThatThrownBy(
+              () -> checkFsRead(enforcer, caller("io.lucenia.core.index", "unnamed"), dataFile))
+          .isInstanceOf(SecurityException.class)
+          .hasMessageContaining("fs.read");
+    }
+  }
+
+  @Nested
+  @DisplayName("Non-default filesystem provider paths")
+  class NonDefaultFilesystemTest {
+
+    @Test
+    @DisplayName("handles path from non-default filesystem without ProviderMismatchException")
+    void handlesNonDefaultFilesystemPath() throws Exception {
+      // Create a zip filesystem to get a path on a non-default filesystem provider.
+      // This simulates Lucene's FilterPath which wraps paths in a FilterFileSystem.
+      Path zipFile = tempDir.resolve("test.zip");
+      URI zipUri = URI.create("jar:" + zipFile.toUri());
+
+      try (FileSystem zipFs = FileSystems.newFileSystem(zipUri, Map.of("create", "true"))) {
+        // Create a path inside the zip FS that has the same string as our real temp dir path.
+        // This mimics FilterPath which wraps a real path but reports a different filesystem.
+        Path zipPath = zipFs.getPath(dataFile.toAbsolutePath().toString());
+
+        // Verify the path is on a different filesystem
+        assert zipPath.getFileSystem() != FileSystems.getDefault();
+
+        PolicyDescriptor policy = createPolicy("com.example.app", fsReadEntitlement(dataRoot, "*"));
+        PolicyEnforcer enforcer = createEnforcer(policy);
+
+        // Before the fix, this threw ProviderMismatchException wrapped as SecurityException
+        // because pathMatches() compared a ZipPath with a default-FS Path.
+        assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app"), zipPath))
+            .doesNotThrowAnyException();
+      }
+    }
+
+    @Test
+    @DisplayName("denies non-default filesystem path outside entitled root")
+    void deniesNonDefaultFilesystemPathOutsideRoot() throws Exception {
+      Path zipFile = tempDir.resolve("test.zip");
+      URI zipUri = URI.create("jar:" + zipFile.toUri());
+
+      try (FileSystem zipFs = FileSystems.newFileSystem(zipUri, Map.of("create", "true"))) {
+        Path zipOutsidePath = zipFs.getPath(outsideFile.toAbsolutePath().toString());
+
+        PolicyDescriptor policy = createPolicy("com.example.app", fsReadEntitlement(dataRoot, "*"));
+        PolicyEnforcer enforcer = createEnforcer(policy);
+
+        // Path outside root should still be denied
+        assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app"), zipOutsidePath))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("access denied");
+      }
+    }
+
+    @Test
+    @DisplayName("handles fs.write with non-default filesystem path")
+    void handlesWriteWithNonDefaultFilesystemPath() throws Exception {
+      Path zipFile = tempDir.resolve("test.zip");
+      URI zipUri = URI.create("jar:" + zipFile.toUri());
+
+      try (FileSystem zipFs = FileSystems.newFileSystem(zipUri, Map.of("create", "true"))) {
+        Path zipPath = zipFs.getPath(dataFile.toAbsolutePath().toString());
+
+        Entitlement entitlement =
+            new Entitlement(
+                SubjectPattern.module(),
+                CapabilityGrant.of(
+                    "fs.write",
+                    List.of(
+                        new CapabilityArgument.StringArg(dataRoot),
+                        new CapabilityArgument.StringArg("*"))));
+        PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of(entitlement));
+        PolicyEnforcer enforcer = createEnforcer(policy);
+
+        // fs.write should also handle non-default filesystem paths
+        SecurityException denial =
+            enforcer.check(caller("com.example.app"), Operation.FS_WRITE, zipPath, 0);
+        assert denial == null : "Expected write to be allowed but got: " + denial;
+      }
     }
   }
 

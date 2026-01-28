@@ -54,11 +54,26 @@ cd samples/sandbox-multimodule
 
 All operations will succeed because there's no enforcement.
 
-### With jGuard Agent (enforced)
+### With jGuard Agent - Module Path (default)
 ```bash
 cd samples/sandbox-multimodule
 ../../gradlew :app:runWithAgent
 ```
+
+Runs with JPMS module path. Each module is a named JPMS module.
+
+### With jGuard Agent - Classpath
+```bash
+cd samples/sandbox-multimodule
+../../gradlew :app:runWithAgentClasspath
+```
+
+Runs on classpath (not module path). **Same policies work!** jGuard uses package-prefix matching to resolve module identity:
+- `io.jguard.samples.multimodule.core.*` → `io.jguard.samples.multimodule.core` policy
+- `io.jguard.samples.multimodule.network.*` → `io.jguard.samples.multimodule.network` policy
+- `io.jguard.samples.multimodule.app.*` → `io.jguard.samples.multimodule.app` policy
+
+This enables **zero-change migration** from classpath to module path.
 
 You'll see:
 - **ALLOWED**: Operations that go through entitled modules
@@ -160,6 +175,30 @@ jguardPolicy {
   allowUnsignedPolicies = true  // Only for development!
 }
 ```
+
+## Classpath vs Module Path
+
+jGuard policies work identically on both classpath and module path:
+
+| Aspect | Module Path | Classpath |
+|--------|-------------|-----------|
+| Module identity | JPMS module name | Package-prefix matching |
+| Policy discovery | From signed JARs | From signed JARs |
+| Enforcement | Per-module | Per-module |
+| Migration effort | — | Zero changes needed |
+
+### How Classpath Resolution Works
+
+On the classpath, all code runs in the "unnamed" module. jGuard resolves module identity by matching the caller's package against known module names:
+
+1. `io.jguard.samples.multimodule.core.ConfigReader` → matches `io.jguard.samples.multimodule.core`
+2. Uses longest-prefix matching if multiple modules could match
+3. Falls back to `_global.jguard` (unnamed module policy) if no match
+
+This means you can:
+- Write `module-info.jguard` policies using your module name
+- Run on classpath during development/testing
+- Switch to module path for production — no policy changes needed
 
 ## Files
 
