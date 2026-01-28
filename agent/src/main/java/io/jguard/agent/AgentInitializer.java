@@ -90,10 +90,10 @@ public final class AgentInitializer {
       policy = loadPolicy(config.policyPath());
     }
 
-    // Apply policy overrides if configured
-    if (config.overrideDir() != null) {
-      LOG.info("Applying policy overrides from: {}", config.overrideDir());
-      policy = PolicyMerger.merge(policy, config.overrideDir());
+    // Apply policy overrides if configured (later directories take precedence)
+    for (Path overrideDir : config.overrideDirs()) {
+      LOG.info("Applying policy overrides from: {}", overrideDir);
+      policy = PolicyMerger.merge(policy, overrideDir);
     }
 
     PolicyEnforcer enforcer = new PolicyEnforcer(policy, config);
@@ -110,7 +110,7 @@ public final class AgentInitializer {
     if (config.hotReloadEnabled()) {
       if (config.discoveryEnabled()) {
         // Discovery mode: hot reload external overrides only (base policy is cached)
-        if (config.overrideDir() != null) {
+        if (!config.overrideDirs().isEmpty()) {
           reloader =
               PolicyReloader.forDiscoveryMode(
                   basePolicy, enforcerRef, config, config.hotReloadIntervalSeconds());

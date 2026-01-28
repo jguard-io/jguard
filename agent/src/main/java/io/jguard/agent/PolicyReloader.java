@@ -142,7 +142,7 @@ public final class PolicyReloader {
       AtomicReference<PolicyEnforcer> enforcerRef,
       AgentConfig config,
       long pollIntervalSeconds) {
-    if (config.overrideDir() == null) {
+    if (config.overrideDirs().isEmpty()) {
       throw new IllegalArgumentException(
           "Hot reload in discovery mode requires an override directory "
               + "(set -Djguard.policy.override=<dir>)");
@@ -186,10 +186,10 @@ public final class PolicyReloader {
   }
 
   private void initializeOverrideDirTimestamp() {
-    Path overrideDir = config.overrideDir();
-    if (overrideDir != null && Files.isDirectory(overrideDir)) {
+    List<Path> overrideDirs = config.overrideDirs();
+    if (!overrideDirs.isEmpty()) {
       try {
-        this.lastOverrideDirModifiedTime = getOverrideDirModifiedTime(overrideDir);
+        this.lastOverrideDirModifiedTime = getOverrideDirsModifiedTime(overrideDirs);
       } catch (IOException e) {
         LOG.warn("Could not read initial override directory timestamp: {}", e.getMessage());
         this.lastOverrideDirModifiedTime = null;
@@ -218,17 +218,17 @@ public final class PolicyReloader {
     scheduler.scheduleAtFixedRate(
         this::checkAndReload, pollIntervalSeconds, pollIntervalSeconds, TimeUnit.SECONDS);
 
-    Path overrideDir = config.overrideDir();
+    List<Path> overrideDirs = config.overrideDirs();
     if (isDiscoveryMode()) {
       LOG.info(
-          "Policy hot reload enabled (discovery mode): watching override directory {} (interval={}s)",
-          overrideDir,
+          "Policy hot reload enabled (discovery mode): watching override directories {} (interval={}s)",
+          overrideDirs,
           pollIntervalSeconds);
-    } else if (overrideDir != null && Files.isDirectory(overrideDir)) {
+    } else if (!overrideDirs.isEmpty()) {
       LOG.info(
-          "Policy hot reload enabled: watching {} and override directory {} (interval={}s)",
+          "Policy hot reload enabled: watching {} and override directories {} (interval={}s)",
           policyPath,
-          overrideDir,
+          overrideDirs,
           pollIntervalSeconds);
     } else {
       LOG.info(
@@ -272,10 +272,10 @@ public final class PolicyReloader {
         }
       }
 
-      // Check if override directory has changed
-      Path overrideDir = config.overrideDir();
-      if (overrideDir != null && Files.isDirectory(overrideDir)) {
-        FileTime currentOverrideModifiedTime = getOverrideDirModifiedTime(overrideDir);
+      // Check if any override directory has changed
+      List<Path> overrideDirs = config.overrideDirs();
+      if (!overrideDirs.isEmpty()) {
+        FileTime currentOverrideModifiedTime = getOverrideDirsModifiedTime(overrideDirs);
         if (lastOverrideDirModifiedTime == null
             || currentOverrideModifiedTime.compareTo(lastOverrideDirModifiedTime) > 0) {
           overridesChanged = true;
@@ -286,13 +286,13 @@ public final class PolicyReloader {
       // Reload if anything changed
       if (policyChanged || overridesChanged) {
         if (isDiscoveryMode()) {
-          LOG.info("Override files changed, reloading from: {}", overrideDir);
+          LOG.info("Override files changed, reloading from: {}", overrideDirs);
         } else if (policyChanged && overridesChanged) {
           LOG.info("Policy and override files changed, reloading");
         } else if (policyChanged) {
           LOG.info("Policy file changed, reloading: {}", policyPath);
         } else {
-          LOG.info("Override files changed, reloading from: {}", overrideDir);
+          LOG.info("Override files changed, reloading from: {}", overrideDirs);
         }
         reload();
       }
@@ -316,10 +316,11 @@ public final class PolicyReloader {
         }
       }
 
-      // Apply overrides if configured
-      Path overrideDir = config.overrideDir();
-      if (overrideDir != null && Files.isDirectory(overrideDir)) {
-        policy = PolicyMerger.merge(policy, overrideDir);
+      // Apply overrides if configured (later directories take precedence)
+      for (Path overrideDir : config.overrideDirs()) {
+        if (Files.isDirectory(overrideDir)) {
+          policy = PolicyMerger.merge(policy, overrideDir);
+        }
       }
 
       // Create new enforcer
@@ -482,7 +483,28 @@ public final class PolicyReloader {
   }
 
   /**
-   * Gets the latest modification time of any .bin file in the override directory.
+   * Gets the latest modification time across all override directories.
+   *
+   * @param overrideDirs the override directories
+   * @return the latest modification time across all directories
+   * @throws IOException if reading any directory fails
+   */
+  private FileTime getOverrideDirsModifiedTime(List<Path> overrideDirs) throws IOException {
+    FileTime latest = null;
+    for (Path overrideDir : overrideDirs) {
+      if (Files.isDirectory(overrideDir)) {
+        FileTime dirTime = getOverrideDirModifiedTime(overrideDir);
+        if (latest == null || dirTime.compareTo(latest) > 0) {
+          latest = dirTime;
+        }
+      }
+    }
+    // If no directories exist yet, use epoch
+    return latest != null ? latest : FileTime.fromMillis(0);
+  }
+
+  /**
+   * Gets the latest modification time of any .bin file in a single override directory.
    *
    * @param overrideDir the override directory
    * @return the latest modification time

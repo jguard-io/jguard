@@ -172,6 +172,41 @@ public abstract class JGuardPolicyExtension {
   public abstract Property<Boolean> getExternalPoliciesIncludeJson();
 
   // ========================================================================
+  // Test Policies Configuration
+  // ========================================================================
+
+  /**
+   * The source directory containing test-specific policy {@code .jguard} files.
+   *
+   * <p>Test policies extend embedded policies with additional permissions needed during testing
+   * (e.g., temp file access, thread creation for test frameworks). These policies are only applied
+   * when running tests, not in production.
+   *
+   * <p>All {@code *.jguard} files in this directory will be compiled to binary format and passed to
+   * the agent during test execution.
+   *
+   * <p>Default: {@code src/test/jguard}
+   *
+   * <p>Example usage:
+   *
+   * <pre>
+   * // File: src/test/jguard/io.mymodule.jguard
+   * security module io.mymodule {
+   *     entitle io.mymodule.. to fs.write("/tmp", "**");
+   *     entitle io.mymodule.. to threads.create;
+   * }
+   * </pre>
+   */
+  public abstract DirectoryProperty getTestPoliciesSourceDir();
+
+  /**
+   * The output directory for compiled test policy {@code .bin} files.
+   *
+   * <p>Default: {@code build/test-policies/}
+   */
+  public abstract DirectoryProperty getTestPoliciesOutputDir();
+
+  // ========================================================================
   // Trusted Module Configuration
   // ========================================================================
 

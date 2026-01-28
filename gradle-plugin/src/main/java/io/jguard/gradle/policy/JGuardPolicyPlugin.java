@@ -10,6 +10,7 @@ package io.jguard.gradle.policy;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
@@ -20,6 +21,7 @@ import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.JavaExec;
 import org.gradle.api.tasks.SourceSet;
+import org.gradle.api.tasks.SourceSetContainer;
 import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.compile.JavaCompile;
 import org.gradle.api.tasks.testing.Test;
@@ -44,6 +46,7 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
   public static final String EXTENSION_NAME = "jguardPolicy";
   public static final String TASK_NAME = "compileJGuardPolicy";
   public static final String EXTERNAL_POLICIES_TASK_NAME = "compileExternalPolicies";
+  public static final String TEST_POLICIES_TASK_NAME = "compileTestPolicies";
   public static final String AGENT_CONFIGURATION_NAME = "jguardAgent";
   public static final String RUN_WITH_AGENT_TASK_NAME = "runWithAgent";
 
@@ -134,33 +137,83 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                   });
             });
 
+    // Register the test policies compile task
+    project
+        .getTasks()
+        .register(
+            TEST_POLICIES_TASK_NAME,
+            CompileExternalPoliciesTask.class,
+            task -> {
+              task.setDescription(
+                  "Compiles test-specific policy .jguard files from src/test/jguard");
+              task.setGroup("jguard");
+
+              // Wire inputs from extension
+              task.getSourceDir().set(extension.getTestPoliciesSourceDir());
+              task.getOutputDir().set(extension.getTestPoliciesOutputDir());
+              task.getIncludeJson().set(false); // Never need JSON for test policies
+
+              // Wire source files for proper up-to-date tracking
+              task.getSourceFiles()
+                  .from(
+                      project.provider(
+                          () -> {
+                            if (extension.getTestPoliciesSourceDir().isPresent()) {
+                              return extension
+                                  .getTestPoliciesSourceDir()
+                                  .get()
+                                  .getAsFileTree()
+                                  .matching(pattern -> pattern.include("*.jguard"));
+                            }
+                            return project.files();
+                          }));
+
+              // Only enable task if source dir exists and has files
+              task.onlyIf(
+                  t -> {
+                    if (!extension.getTestPoliciesSourceDir().isPresent()) {
+                      return false;
+                    }
+                    File sourceDir = extension.getTestPoliciesSourceDir().get().getAsFile();
+                    return sourceDir.exists() && sourceDir.isDirectory();
+                  });
+            });
+
     // Integrate with jar task if Java plugin is applied
     project
         .getPlugins()
         .withType(
             JavaPlugin.class,
             javaPlugin -> {
+              // Wire compileJGuardPolicy into the build lifecycle.
+              // The policy outputs to build/classes/java/main/META-INF/jguard/
+              // which is a shared output directory with compileJava.
+
+              // 1. compileJGuardPolicy must run after compileJava (same project)
+              compileTask.configure(task -> task.dependsOn(JavaPlugin.COMPILE_JAVA_TASK_NAME));
+
+              // 2. Register policy output as part of main source set output.
+              //    This tells Gradle that any consumer of this source set (via project
+              //    dependencies) must wait for compileJGuardPolicy. Without this, cross-project
+              //    dependencies would not know about the policy compilation task.
+              //    We register build/jguard-policy (the parent), not the full path, so that
+              //    META-INF/jguard/policy.bin structure is preserved in the JAR.
+              SourceSetContainer sourceSets =
+                  project.getExtensions().getByType(SourceSetContainer.class);
+              SourceSet mainSourceSet = sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME);
+              Provider<Directory> policyRootDir =
+                  project.getLayout().getBuildDirectory().dir("jguard-policy");
+              mainSourceSet.getOutput().dir(Map.of("builtBy", compileTask), policyRootDir);
+
+              // 3. The 'classes' task must depend on compileJGuardPolicy
               project
                   .getTasks()
-                  .named(
-                      JavaPlugin.JAR_TASK_NAME,
-                      Jar.class,
-                      jar -> {
-                        jar.dependsOn(compileTask);
+                  .named(JavaPlugin.CLASSES_TASK_NAME, task -> task.dependsOn(compileTask));
 
-                        // Only include outputs if the source file exists
-                        jar.from(
-                            compileTask.flatMap(
-                                task -> {
-                                  if (task.getSourceFile().get().getAsFile().exists()) {
-                                    return extension.getOutputDir();
-                                  }
-                                  return project.provider(() -> project.files());
-                                }),
-                            spec -> {
-                              spec.into(extension.getJarPath());
-                            });
-                      });
+              // 4. JAR task also depends on compileJGuardPolicy (belt and suspenders)
+              project
+                  .getTasks()
+                  .named(JavaPlugin.JAR_TASK_NAME, Jar.class, jar -> jar.dependsOn(compileTask));
 
               // Only configure module path inference for modular projects (those with
               // module-info.java).
@@ -237,20 +290,23 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                         });
               }
 
-              // Wire test tasks to depend on external policies compilation.
-              // External policies are commonly used for test infrastructure (Gradle workers,
-              // JUnit, JaCoCo, etc.), so tests should automatically compile them first.
-              TaskProvider<CompileExternalPoliciesTask> externalPoliciesTaskProvider =
-                  project
-                      .getTasks()
-                      .named(EXTERNAL_POLICIES_TASK_NAME, CompileExternalPoliciesTask.class);
-
+              // Wire test tasks to depend on policy compilation.
+              // Embedded policies are output to build/classes/java/main/META-INF/jguard/
+              // so they must be compiled before tests run.
               project
                   .getTasks()
                   .withType(
                       Test.class,
                       task -> {
-                        // Only add dependency if external policies source dir is configured
+                        // Depend on embedded policy compilation
+                        task.dependsOn(compileTask);
+
+                        // Also depend on external policies if configured
+                        TaskProvider<CompileExternalPoliciesTask> externalPoliciesTaskProvider =
+                            project
+                                .getTasks()
+                                .named(
+                                    EXTERNAL_POLICIES_TASK_NAME, CompileExternalPoliciesTask.class);
                         task.dependsOn(
                             project.provider(
                                 () -> {
@@ -263,6 +319,59 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                                   }
                                   return project.files(); // Empty dependency if not configured
                                 }));
+
+                        // Also depend on test policies if configured
+                        TaskProvider<CompileExternalPoliciesTask> testPoliciesTaskProvider =
+                            project
+                                .getTasks()
+                                .named(TEST_POLICIES_TASK_NAME, CompileExternalPoliciesTask.class);
+                        task.dependsOn(
+                            project.provider(
+                                () -> {
+                                  if (extension.getTestPoliciesSourceDir().isPresent()) {
+                                    File sourceDir =
+                                        extension.getTestPoliciesSourceDir().get().getAsFile();
+                                    if (sourceDir.exists() && sourceDir.isDirectory()) {
+                                      return testPoliciesTaskProvider;
+                                    }
+                                  }
+                                  return project.files(); // Empty dependency if not configured
+                                }));
+
+                        // Configure JVM args to pass override directories
+                        // The agent supports comma-separated directories for layered overrides
+                        task.doFirst(
+                            t -> {
+                              List<String> overrideDirs = new ArrayList<>();
+
+                              // Add external policies dir if configured
+                              if (extension.getExternalPoliciesSourceDir().isPresent()) {
+                                File sourceDir =
+                                    extension.getExternalPoliciesSourceDir().get().getAsFile();
+                                if (sourceDir.exists() && sourceDir.isDirectory()) {
+                                  File outputDir =
+                                      extension.getExternalPoliciesOutputDir().get().getAsFile();
+                                  overrideDirs.add(outputDir.getAbsolutePath());
+                                }
+                              }
+
+                              // Add test policies dir if configured (takes precedence)
+                              if (extension.getTestPoliciesSourceDir().isPresent()) {
+                                File sourceDir =
+                                    extension.getTestPoliciesSourceDir().get().getAsFile();
+                                if (sourceDir.exists() && sourceDir.isDirectory()) {
+                                  File outputDir =
+                                      extension.getTestPoliciesOutputDir().get().getAsFile();
+                                  overrideDirs.add(outputDir.getAbsolutePath());
+                                }
+                              }
+
+                              // Pass comma-separated override directories to agent
+                              if (!overrideDirs.isEmpty()) {
+                                String overridePath = String.join(",", overrideDirs);
+                                task.jvmArgs("-Djguard.policy.override=" + overridePath);
+                              }
+                            });
                       });
             });
 
@@ -275,16 +384,13 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
   }
 
   private Configuration createAgentConfiguration(Project project) {
-    return project
-        .getConfigurations()
-        .create(
-            AGENT_CONFIGURATION_NAME,
-            config -> {
-              config.setDescription("jGuard agent JAR for runtime enforcement");
-              config.setCanBeConsumed(false);
-              config.setCanBeResolved(true);
-              config.setVisible(false);
-            });
+    // Use maybeCreate to avoid conflicts when other plugins create this configuration first
+    Configuration config = project.getConfigurations().maybeCreate(AGENT_CONFIGURATION_NAME);
+    config.setDescription("jGuard agent JAR for runtime enforcement");
+    config.setCanBeConsumed(false);
+    config.setCanBeResolved(true);
+    config.setVisible(false);
+    return config;
   }
 
   private void registerRunWithAgentTask(
@@ -560,9 +666,21 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
         .getSourceFile()
         .convention(
             project.getLayout().getProjectDirectory().file("src/main/java/module-info.jguard"));
+    // Output to a separate directory (not build/classes/java/main) to avoid
+    // Gradle task ownership conflicts. The directory is registered with
+    // sourceSets.main.output.dir() so it's included in:
+    // 1. Test classpath (for test-time policy discovery)
+    // 2. JAR packaging (policy ends up at META-INF/jguard/policy.bin)
+    // 3. Cross-project dependency resolution
+    // Use flatMap for lazy evaluation - jarPath may not be set for external-only builds
     extension
         .getOutputDir()
-        .convention(project.getLayout().getBuildDirectory().dir("generated/jguard"));
+        .convention(
+            extension
+                .getJarPath()
+                .flatMap(
+                    jarPath ->
+                        project.getLayout().getBuildDirectory().dir("jguard-policy/" + jarPath)));
     // JSON output disabled by default since Jackson is excluded from plugin dependencies
     // to avoid JPMS conflicts in Gradle buildSrc. Enable with includeJson = true if Jackson
     // is available on the classpath.
@@ -581,6 +699,14 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
         .getExternalPoliciesOutputDir()
         .convention(project.getLayout().getBuildDirectory().dir("external-policies"));
     extension.getExternalPoliciesIncludeJson().convention(false);
+
+    // Test policies defaults
+    extension
+        .getTestPoliciesSourceDir()
+        .convention(project.getLayout().getProjectDirectory().dir("src/test/jguard"));
+    extension
+        .getTestPoliciesOutputDir()
+        .convention(project.getLayout().getBuildDirectory().dir("test-policies"));
 
     // Trusted module defaults
     extension.getAllowTrusted().convention(false);

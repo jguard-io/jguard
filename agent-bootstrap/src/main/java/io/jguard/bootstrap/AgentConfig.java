@@ -8,6 +8,9 @@
 package io.jguard.bootstrap;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Agent configuration parsed from system properties.
@@ -28,7 +31,8 @@ import java.nio.file.Path;
  *   <li><b>jguard.discovery</b> (default: true): Enable embedded policy discovery from JARs
  *   <li><b>jguard.allowUnsignedPolicies</b> (default: false): Allow policies from unsigned JARs
  *   <li><b>jguard.policy.unnamed</b>: Path to policy for unnamed module (classpath code)
- *   <li><b>jguard.policy.override</b>: Path to override directory (can only restrict, not expand)
+ *   <li><b>jguard.policy.override</b>: Path(s) to override directories, comma-separated for
+ *       multiple
  * </ul>
  *
  * <h2>Usage</h2>
@@ -65,7 +69,7 @@ public final class AgentConfig {
   private final boolean discoveryEnabled;
   private final boolean allowUnsignedPolicies;
   private final Path unnamedModulePolicy;
-  private final Path overrideDir;
+  private final List<Path> overrideDirs;
 
   private AgentConfig(Builder builder) {
     this.policyPath = builder.policyPath;
@@ -79,7 +83,7 @@ public final class AgentConfig {
     this.discoveryEnabled = builder.discoveryEnabled;
     this.allowUnsignedPolicies = builder.allowUnsignedPolicies;
     this.unnamedModulePolicy = builder.unnamedModulePolicy;
-    this.overrideDir = builder.overrideDir;
+    this.overrideDirs = Collections.unmodifiableList(new ArrayList<>(builder.overrideDirs));
   }
 
   /**
@@ -131,10 +135,15 @@ public final class AgentConfig {
       builder.unnamedModulePolicy(Path.of(unnamedPolicyStr));
     }
 
-    // Policy override directory
+    // Policy override directories (comma-separated for multiple)
     String overrideDirStr = System.getProperty(PROP_OVERRIDE_DIR);
     if (overrideDirStr != null && !overrideDirStr.isBlank()) {
-      builder.overrideDir(Path.of(overrideDirStr));
+      for (String dir : overrideDirStr.split(",")) {
+        String trimmed = dir.trim();
+        if (!trimmed.isEmpty()) {
+          builder.addOverrideDir(Path.of(trimmed));
+        }
+      }
     }
 
     // Enforcement mode
@@ -292,16 +301,21 @@ public final class AgentConfig {
   }
 
   /**
-   * Returns the path to the external policy directory.
+   * Returns the paths to external policy directories.
    *
-   * <p>When set, the agent loads external policy files from this directory and merges them with
+   * <p>When set, the agent loads external policy files from these directories and merges them with
    * embedded policies using grant/deny semantics:
    *
    * <ul>
    *   <li>Grants from external policies are added to embedded grants (union)
    *   <li>Denials remove capabilities from the effective policy (set difference)
    *   <li>Denials always win over grants
+   *   <li>Later directories take precedence over earlier ones
    * </ul>
+   *
+   * <p>Multiple directories can be specified via comma-separated paths in the system property. This
+   * is useful for layering policies, e.g., production external policies plus test-specific
+   * overrides.
    *
    * <p>Expected directory structure:
    *
@@ -312,10 +326,10 @@ public final class AgentConfig {
    * └── _global.bin                # Global policy (applies to ALL modules)
    * </pre>
    *
-   * @return the external policy directory path, or null if not specified
+   * @return the external policy directory paths, empty list if not specified
    */
-  public Path overrideDir() {
-    return overrideDir;
+  public List<Path> overrideDirs() {
+    return overrideDirs;
   }
 
   @Override
@@ -341,8 +355,8 @@ public final class AgentConfig {
         + allowUnsignedPolicies
         + ", unnamedModulePolicy="
         + unnamedModulePolicy
-        + ", overrideDir="
-        + overrideDir
+        + ", overrideDirs="
+        + overrideDirs
         + '}';
   }
 
@@ -359,7 +373,7 @@ public final class AgentConfig {
     private boolean discoveryEnabled = false;
     private boolean allowUnsignedPolicies = false;
     private Path unnamedModulePolicy;
-    private Path overrideDir;
+    private List<Path> overrideDirs = new ArrayList<>();
 
     /** Creates a new Builder with default values. */
     public Builder() {}
@@ -479,17 +493,34 @@ public final class AgentConfig {
     }
 
     /**
-     * Sets the external policy directory.
+     * Adds an external policy directory.
      *
      * <p>Files in this directory can grant additional capabilities or deny existing capabilities
-     * using grant/deny semantics. See {@link AgentConfig#overrideDir()} for expected directory
-     * structure.
+     * using grant/deny semantics. See {@link AgentConfig#overrideDirs()} for expected directory
+     * structure. Multiple directories can be added; later directories take precedence.
+     *
+     * @param path the external policy directory path
+     * @return this builder
+     */
+    public Builder addOverrideDir(Path path) {
+      this.overrideDirs.add(path);
+      return this;
+    }
+
+    /**
+     * Sets a single external policy directory, clearing any previously added directories.
+     *
+     * <p>This is a convenience method for the common case of a single override directory. For
+     * multiple directories, use {@link #addOverrideDir(Path)}.
      *
      * @param path the external policy directory path
      * @return this builder
      */
     public Builder overrideDir(Path path) {
-      this.overrideDir = path;
+      this.overrideDirs.clear();
+      if (path != null) {
+        this.overrideDirs.add(path);
+      }
       return this;
     }
 

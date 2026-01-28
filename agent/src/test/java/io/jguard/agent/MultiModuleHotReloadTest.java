@@ -490,6 +490,123 @@ class MultiModuleHotReloadTest {
     }
   }
 
+  @Nested
+  @DisplayName("Multiple override directories")
+  class MultipleOverrideDirectories {
+
+    private Path overrideDir2;
+
+    @BeforeEach
+    void setUpSecondDir() throws IOException {
+      overrideDir2 = tempDir.resolve("overrides2");
+      Files.createDirectories(overrideDir2);
+    }
+
+    @Test
+    @DisplayName("later directories take precedence")
+    void laterDirectoriesTakePrecedence() throws Exception {
+      // Create base policy with no capabilities
+      ModulePolicy baseModule = new ModulePolicy("com.example.app", List.of(), List.of());
+      ApplicationPolicy basePolicy = ApplicationPolicy.single(baseModule);
+      writePolicyFile(policyPath, basePolicy);
+
+      // First override grants fs.read
+      ModulePolicy override1 =
+          new ModulePolicy(
+              "com.example.app",
+              List.of(new Entitlement(SubjectPattern.module(), createCapability("fs.read"))),
+              List.of());
+      writeExternalPolicyTo(overrideDir, "com.example.app.bin", override1);
+
+      // Second override denies fs.read
+      ModulePolicy override2 =
+          new ModulePolicy(
+              "com.example.app",
+              List.of(),
+              List.of(new Denial(SubjectPattern.module(), createCapability("fs.read"), false)));
+      writeExternalPolicyTo(overrideDir2, "com.example.app.bin", override2);
+
+      // Build config with both directories (override2 listed second = takes precedence)
+      config =
+          new AgentConfig.Builder()
+              .policyPath(policyPath)
+              .mode(EnforcementMode.STRICT)
+              .addOverrideDir(overrideDir)
+              .addOverrideDir(overrideDir2)
+              .build();
+
+      // Merge policies in order
+      ApplicationPolicy merged = basePolicy;
+      merged = PolicyMerger.merge(merged, overrideDir);
+      merged = PolicyMerger.merge(merged, overrideDir2);
+
+      PolicyEnforcer enforcer = new PolicyEnforcer(merged, config);
+      enforcerRef = new AtomicReference<>(enforcer);
+
+      // The denial from overrideDir2 should take precedence
+      assertModuleDoesNotHaveCapability("com.example.app", "fs.read");
+    }
+
+    @Test
+    @DisplayName("changes to any directory trigger reload")
+    void changesToAnyDirectoryTriggerReload() throws Exception {
+      // Create base policy
+      ModulePolicy baseModule =
+          new ModulePolicy(
+              "com.example.app",
+              List.of(new Entitlement(SubjectPattern.module(), createCapability("fs.read"))),
+              List.of());
+      ApplicationPolicy basePolicy = ApplicationPolicy.single(baseModule);
+
+      // Build config with both directories
+      config =
+          new AgentConfig.Builder()
+              .discoveryEnabled(true)
+              .mode(EnforcementMode.STRICT)
+              .addOverrideDir(overrideDir)
+              .addOverrideDir(overrideDir2)
+              .build();
+
+      // Start with merged policy
+      ApplicationPolicy merged = PolicyMerger.merge(basePolicy, overrideDir);
+      merged = PolicyMerger.merge(merged, overrideDir2);
+      PolicyEnforcer enforcer = new PolicyEnforcer(merged, config);
+      enforcerRef = new AtomicReference<>(enforcer);
+
+      reloader = PolicyReloader.forDiscoveryMode(basePolicy, enforcerRef, config, 1);
+      reloader.start();
+
+      // Verify initial state
+      assertModuleHasCapability("com.example.app", "fs.read");
+      assertModuleDoesNotHaveCapability("com.example.app", "threads.create");
+
+      Thread.sleep(100);
+
+      // Add a policy to the SECOND directory (should trigger reload)
+      ModulePolicy newOverride =
+          new ModulePolicy(
+              "com.example.app",
+              List.of(new Entitlement(SubjectPattern.module(), createCapability("threads.create"))),
+              List.of());
+      writeExternalPolicyTo(overrideDir2, "com.example.app.bin", newOverride);
+
+      Thread.sleep(2000);
+
+      // New capability should be available
+      assertModuleHasCapability("com.example.app", "fs.read");
+      assertModuleHasCapability("com.example.app", "threads.create");
+    }
+
+    private void writeExternalPolicyTo(Path dir, String filename, ModulePolicy policy)
+        throws IOException {
+      Path policyPath = dir.resolve(filename);
+      ApplicationPolicy appPolicy = ApplicationPolicy.single(policy);
+      try (FileOutputStream fos = new FileOutputStream(policyPath.toFile())) {
+        BinaryPolicyWriter.write(appPolicy, fos);
+      }
+    }
+  }
+
   // ===== Helper methods =====
 
   private ModulePolicy createModule(String name, String... capabilities) {
