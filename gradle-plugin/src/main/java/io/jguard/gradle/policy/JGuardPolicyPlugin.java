@@ -19,6 +19,7 @@ import org.gradle.api.plugins.ApplicationPlugin;
 import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.provider.Provider;
+import org.gradle.api.tasks.Delete;
 import org.gradle.api.tasks.JavaExec;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
@@ -177,6 +178,18 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                     File sourceDir = extension.getTestPoliciesSourceDir().get().getAsFile();
                     return sourceDir.exists() && sourceDir.isDirectory();
                   });
+            });
+
+    // Register policy output directories with the clean task
+    // This ensures ./gradlew clean removes stale .bin files
+    project
+        .getTasks()
+        .named(
+            "clean",
+            Delete.class,
+            clean -> {
+              clean.delete(project.getLayout().getBuildDirectory().dir("jguard-policy"));
+              clean.delete(project.getLayout().getBuildDirectory().dir("test-policies"));
             });
 
     // Integrate with jar task if Java plugin is applied
