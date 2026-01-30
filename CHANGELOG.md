@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Test-specific policy overrides**: New `src/test/jguard/` directory support for test-only policies. Test policies extend embedded policies with additional permissions needed during testing (e.g., temp file access, thread creation). Policies are compiled by the `compileTestPolicies` task and automatically passed to the agent during test execution.
 - **Multi-directory policy overrides**: The agent now supports comma-separated paths in `-Djguard.policy.override`, allowing layered policy overrides. Later directories take precedence.
 - **Embedded external policies**: Modules can now ship policies for third-party dependencies by placing them in `src/main/jguard/`. These policies are compiled to `META-INF/jguard/external/*.bin` in the JAR and automatically discovered by the agent alongside embedded policies. This enables applications to define capabilities for runtime dependencies (e.g., Netty, Reactor) without requiring manual `-Djguard.policy.override` configuration. Same signing requirements apply as embedded policies.
+- **Audit mode summary**: In audit mode, the agent now accumulates all unique denials and prints a summary at JVM shutdown. This shows all missing entitlements in one run instead of discovering them one-by-one.
+- **Suggested policy output**: At shutdown in audit mode, the agent prints copy-paste-ready `.jguard` policy syntax based on observed denials. This dramatically speeds up initial policy authoring for new projects.
+- **Policy discovery debug logging**: Added DEBUG-level logging for policy discovery from JARs and directories. Enable with `-Djguard.log.level=debug` to diagnose policy loading issues.
 
 ### Fixed
 
@@ -19,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Embedded policies not discovered during tests**: Fixed policy discovery for tests by outputting compiled policies to `build/jguard-policy/META-INF/jguard/` and registering this directory with `sourceSets.main.output.dir()`. This ensures policies are on the test classpath and properly packaged into JARs.
 - **Gradle cross-project dependency ordering**: Fixed `compileJGuardPolicy` task lifecycle wiring. Policies now output to a dedicated `build/jguard-policy/` directory (avoiding conflicts with `compileJava`'s output), registered via `sourceSets.main.output.dir(builtBy: compileJGuardPolicy)`. This ensures cross-project dependencies (via `project(':other')`) automatically wait for policy compilation.
 - **Directory-based policy discovery**: Fixed agent to discover embedded policies from directories on the classpath, not just JAR files. This enables policy discovery during development/testing when using Gradle class directories (`build/classes/java/main`).
+- **Gradle clean task**: The `clean` task now removes `build/jguard-policy/` and `build/test-policies/` directories, preventing stale compiled policy files from causing conflicts.
 
 ## [0.3.1] - 2026-01-30
 

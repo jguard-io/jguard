@@ -1826,4 +1826,150 @@ class PolicyEnforcerTest {
           .hasMessageContaining("runtime.shutdown_hook");
     }
   }
+
+  @Nested
+  @DisplayName("Audit mode denial accumulation")
+  class AuditModeDenialTest {
+
+    private PolicyEnforcer createAuditEnforcer(PolicyDescriptor policy) {
+      AgentConfig config =
+          new AgentConfig.Builder()
+              .policyPath(tempDir.resolve("policy.bin"))
+              .mode(EnforcementMode.AUDIT)
+              .build();
+      return new PolicyEnforcer(policy, config);
+    }
+
+    @Test
+    @DisplayName("records denials in audit mode")
+    void recordsDenialsInAuditMode() {
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of());
+      PolicyEnforcer enforcer = createAuditEnforcer(policy);
+
+      // Trigger denials (in audit mode, these return SecurityException but don't throw)
+      SecurityException denial1 =
+          enforcer.check(caller("com.example.app"), Operation.FS_READ, dataFile, 0);
+      SecurityException denial2 =
+          enforcer.check(caller("com.example.app"), Operation.THREAD_CREATE, "test", 0);
+      SecurityException denial3 =
+          enforcer.check(caller("com.example.app"), Operation.NATIVE_LOAD, "libfoo", 0);
+
+      // All should return denials
+      assert denial1 != null : "Expected fs.read denial";
+      assert denial2 != null : "Expected threads.create denial";
+      assert denial3 != null : "Expected native.load denial";
+
+      // Check that denials were recorded
+      var denials = enforcer.getAuditDenials();
+      assert denials.containsKey("com.example.app") : "Should have denials for module";
+
+      var moduleDenials = denials.get("com.example.app");
+      assert moduleDenials.size() == 3 : "Should have 3 unique denials";
+
+      // Check specific denials
+      assert moduleDenials.stream().anyMatch(d -> d.capability().equals("fs.read"))
+          : "Should have fs.read denial";
+      assert moduleDenials.stream().anyMatch(d -> d.capability().equals("threads.create"))
+          : "Should have threads.create denial";
+      assert moduleDenials.stream().anyMatch(d -> d.capability().equals("native.load"))
+          : "Should have native.load denial";
+    }
+
+    @Test
+    @DisplayName("deduplicates repeated denials for same capability")
+    void deduplicatesRepeatedDenials() {
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of());
+      PolicyEnforcer enforcer = createAuditEnforcer(policy);
+
+      // Trigger the same denial multiple times
+      enforcer.check(caller("com.example.app"), Operation.FS_READ, dataFile, 0);
+      enforcer.check(caller("com.example.app"), Operation.FS_READ, dataSubFile, 0);
+      enforcer.check(caller("com.example.app"), Operation.FS_READ, outsideFile, 0);
+
+      var denials = enforcer.getAuditDenials();
+      var moduleDenials = denials.get("com.example.app");
+
+      // Should only have one fs.read denial despite multiple triggers
+      assert moduleDenials.size() == 1 : "Should deduplicate to 1 denial";
+      assert moduleDenials.stream().anyMatch(d -> d.capability().equals("fs.read"))
+          : "Should have fs.read denial";
+    }
+
+    @Test
+    @DisplayName("does not record denials in strict mode")
+    void doesNotRecordInStrictMode() {
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of());
+      PolicyEnforcer enforcer = createEnforcer(policy); // STRICT mode from helper
+
+      // Trigger a denial (this will throw because we're in strict mode)
+      try {
+        checkFsRead(enforcer, caller("com.example.app"), dataFile);
+        assert false : "Should have thrown";
+      } catch (SecurityException e) {
+        // expected
+      }
+
+      // No denials should be recorded in strict mode
+      var denials = enforcer.getAuditDenials();
+      assert denials.isEmpty() : "Should not record denials in strict mode";
+    }
+
+    @Test
+    @DisplayName("groups denials by module")
+    void groupsDenialsByModule() {
+      // Two modules with no entitlements
+      ModulePolicy module1 = new ModulePolicy("com.example.core", List.of());
+      ModulePolicy module2 = new ModulePolicy("com.example.web", List.of());
+      ApplicationPolicy policy = ApplicationPolicy.create(List.of(module1, module2));
+
+      AgentConfig config =
+          new AgentConfig.Builder()
+              .policyPath(tempDir.resolve("policy.bin"))
+              .mode(EnforcementMode.AUDIT)
+              .build();
+      PolicyEnforcer enforcer = new PolicyEnforcer(policy, config);
+
+      // Trigger denials from different modules
+      enforcer.check(
+          caller("com.example.core.impl", "com.example.core"), Operation.FS_READ, dataFile, 0);
+      enforcer.check(
+          caller("com.example.web.servlet", "com.example.web"), Operation.THREAD_CREATE, "test", 0);
+
+      var denials = enforcer.getAuditDenials();
+
+      // Should have separate entries for each module
+      assert denials.containsKey("com.example.core") : "Should have core module denials";
+      assert denials.containsKey("com.example.web") : "Should have web module denials";
+
+      assert denials.get("com.example.core").stream()
+              .anyMatch(d -> d.capability().equals("fs.read"))
+          : "Core should have fs.read denial";
+      assert denials.get("com.example.web").stream()
+              .anyMatch(d -> d.capability().equals("threads.create"))
+          : "Web should have threads.create denial";
+    }
+
+    @Test
+    @DisplayName("marks operations with args correctly")
+    void marksOperationsWithArgsCorrectly() {
+      PolicyDescriptor policy = PolicyDescriptor.create("com.example.app", List.of());
+      PolicyEnforcer enforcer = createAuditEnforcer(policy);
+
+      // Simple operation (no args)
+      enforcer.check(caller("com.example.app"), Operation.THREAD_CREATE, "test", 0);
+      // Operation with args
+      enforcer.check(caller("com.example.app"), Operation.NATIVE_LOAD, "libfoo", 0);
+
+      var denials = enforcer.getAuditDenials().get("com.example.app");
+
+      // Find the denials
+      var threadsCreateDenial =
+          denials.stream().filter(d -> d.capability().equals("threads.create")).findFirst().get();
+      var nativeLoadDenial =
+          denials.stream().filter(d -> d.capability().equals("native.load")).findFirst().get();
+
+      assert !threadsCreateDenial.hasArgs() : "threads.create should not have args";
+      assert nativeLoadDenial.hasArgs() : "native.load should have args";
+    }
+  }
 }

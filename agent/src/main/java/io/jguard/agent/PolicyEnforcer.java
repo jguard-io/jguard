@@ -10,6 +10,7 @@ package io.jguard.agent;
 import io.jguard.bootstrap.AgentConfig;
 import io.jguard.bootstrap.AgentLogger;
 import io.jguard.bootstrap.CallerContext;
+import io.jguard.bootstrap.EnforcementMode;
 import io.jguard.bootstrap.Operation;
 import io.jguard.policy.model.ApplicationPolicy;
 import io.jguard.policy.model.CapabilityArgument;
@@ -20,9 +21,12 @@ import io.jguard.policy.model.SubjectPattern;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -43,6 +47,12 @@ public final class PolicyEnforcer {
   // Cache: "module:package:capability:args" -> allowed
   private final Map<String, Boolean> decisionCache = new ConcurrentHashMap<>();
 
+  // Audit mode denial accumulation: module -> set of (capability, hasArgs)
+  private final Map<String, Set<AuditDenial>> auditDenials = new ConcurrentHashMap<>();
+
+  // Track if shutdown hook has been registered
+  private static volatile boolean shutdownHookRegistered = false;
+
   /**
    * Creates a PolicyEnforcer for a multi-module application policy.
    *
@@ -53,6 +63,7 @@ public final class PolicyEnforcer {
     this.policy = policy;
     this.config = config;
     indexEntitlements();
+    registerAuditShutdownHook();
     LOG.info(
         "PolicyEnforcer initialized for {} module(s): {}",
         policy.modules().size(),
@@ -144,6 +155,8 @@ public final class PolicyEnforcer {
     Optional<ModulePolicy> modulePolicy = getModulePolicy(callerModule, callerPackage);
     if (modulePolicy.isEmpty()) {
       LOG.debug("No policy for module: {}", callerModule);
+      // Record denial for audit mode - use caller module since no policy exists
+      recordAuditDenial(callerModule, op, arg0);
       return deniedNoPolicy(callerPackage, callerModule, formatDetails(op, arg0, arg1));
     }
 
@@ -183,9 +196,12 @@ public final class PolicyEnforcer {
       decisionCache.put(cacheKey, allowed);
     }
 
-    return allowed
-        ? null
-        : denied(callerPackage, op.capabilityName(), formatDetails(op, arg0, arg1));
+    if (!allowed) {
+      // Record denial for audit mode suggested policy output
+      recordAuditDenial(moduleName, op, arg0);
+      return denied(callerPackage, op.capabilityName(), formatDetails(op, arg0, arg1));
+    }
+    return null;
   }
 
   /**
@@ -824,5 +840,184 @@ public final class PolicyEnforcer {
         || moduleName.startsWith("javafx.")
         || moduleName.startsWith("oracle.")
         || moduleName.equals("java.base");
+  }
+
+  // ========== AUDIT MODE DENIAL TRACKING ==========
+
+  /**
+   * Records a denial for audit mode policy suggestion output.
+   *
+   * <p>Only records when in audit mode. Denials are deduplicated and grouped by module for the
+   * suggested policy output at shutdown.
+   *
+   * @param moduleName the module that was denied
+   * @param op the operation that was denied
+   * @param arg0 the primary argument (may be null for SIMPLE operations)
+   */
+  private void recordAuditDenial(String moduleName, Operation op, Object arg0) {
+    if (config.mode() != EnforcementMode.AUDIT) {
+      return;
+    }
+
+    // Determine if this operation type uses arguments
+    boolean hasArgs = operationHasArgs(op);
+
+    AuditDenial denial = new AuditDenial(op.capabilityName(), hasArgs);
+    auditDenials.computeIfAbsent(moduleName, k -> ConcurrentHashMap.newKeySet()).add(denial);
+  }
+
+  /**
+   * Returns true if the operation type uses arguments in policy syntax.
+   *
+   * <p>Operations with arguments need wildcard patterns in the suggested policy.
+   */
+  private static boolean operationHasArgs(Operation op) {
+    return switch (op.category()) {
+      case FILESYSTEM -> true; // fs.read/fs.write take (root, glob)
+      case TARGET_PATTERN -> true; // native.load, env.read, system.property.* take (pattern)
+      case HOST_PORT -> true; // network.outbound takes (host, port)
+      case PORT -> true; // network.listen takes (port)
+      case SIMPLE -> false; // threads.create, crypto.provider, etc. take no args
+    };
+  }
+
+  /**
+   * Registers a shutdown hook to print suggested policy in audit mode.
+   *
+   * <p>Only registers once per JVM to avoid duplicate hooks when PolicyEnforcer is recreated during
+   * hot reload.
+   */
+  private void registerAuditShutdownHook() {
+    if (config.mode() != EnforcementMode.AUDIT) {
+      return;
+    }
+
+    synchronized (PolicyEnforcer.class) {
+      if (shutdownHookRegistered) {
+        return;
+      }
+      shutdownHookRegistered = true;
+
+      Runtime.getRuntime()
+          .addShutdownHook(
+              new Thread(
+                  () -> {
+                    printSuggestedPolicy();
+                  },
+                  "jguard-audit-policy-printer"));
+      LOG.debug("Registered audit mode shutdown hook for suggested policy output");
+    }
+  }
+
+  /**
+   * Prints the suggested policy based on accumulated audit denials.
+   *
+   * <p>Output format is valid .jguard syntax that users can copy into their policy files.
+   */
+  private void printSuggestedPolicy() {
+    if (auditDenials.isEmpty()) {
+      return;
+    }
+
+    StringBuilder sb = new StringBuilder();
+    sb.append("\n");
+    sb.append("// ============================================================\n");
+    sb.append("// jGuard Audit Mode - Suggested Policy\n");
+    sb.append("// Based on ").append(countTotalDenials()).append(" denied operation(s)\n");
+    sb.append("// ============================================================\n");
+    sb.append("\n");
+
+    // Sort modules for consistent output
+    List<String> sortedModules = new ArrayList<>(auditDenials.keySet());
+    sortedModules.sort(Comparator.naturalOrder());
+
+    for (String moduleName : sortedModules) {
+      Set<AuditDenial> denials = auditDenials.get(moduleName);
+      if (denials == null || denials.isEmpty()) {
+        continue;
+      }
+
+      sb.append("// Suggested policy for module '").append(moduleName).append("':\n");
+      sb.append("security module ").append(moduleName).append(" {\n");
+
+      // Sort denials for consistent output
+      List<AuditDenial> sortedDenials = new ArrayList<>(denials);
+      sortedDenials.sort(Comparator.comparing(AuditDenial::capability));
+
+      for (AuditDenial denial : sortedDenials) {
+        sb.append("    entitle ").append(moduleName).append(".. to ").append(denial.capability());
+
+        if (denial.hasArgs()) {
+          sb.append(formatWildcardArgs(denial.capability()));
+        }
+
+        sb.append(";\n");
+      }
+
+      sb.append("}\n\n");
+    }
+
+    // Print to stderr so it's visible even if stdout is captured
+    System.err.print(sb);
+  }
+
+  /**
+   * Formats wildcard arguments for a capability based on its type.
+   *
+   * @param capability the capability name
+   * @return the wildcard argument string (e.g., '("*")' or '("/", "**")')
+   */
+  private static String formatWildcardArgs(String capability) {
+    return switch (capability) {
+      case "fs.read", "fs.write", "fs.hardlink" -> "(\"/\", \"**\")";
+      case "network.outbound" -> "(\"*\", \"1-65535\")";
+      case "network.listen" -> "";
+      case "native.load",
+          "env.read",
+          "system.property.read",
+          "system.property.write",
+          "process.exec" ->
+          "(\"*\")";
+      default -> "(\"*\")";
+    };
+  }
+
+  /** Counts total unique denials across all modules. */
+  private int countTotalDenials() {
+    return auditDenials.values().stream().mapToInt(Set::size).sum();
+  }
+
+  /**
+   * Returns the current audit denials map (for testing).
+   *
+   * @return unmodifiable view of the audit denials
+   */
+  Map<String, Set<AuditDenial>> getAuditDenials() {
+    return Map.copyOf(auditDenials);
+  }
+
+  /**
+   * Record class for tracking unique audit denials.
+   *
+   * <p>Two denials are equal if they have the same capability name. The hasArgs flag is used for
+   * output formatting but doesn't affect equality - we want to deduplicate by capability.
+   */
+  record AuditDenial(String capability, boolean hasArgs) implements Comparable<AuditDenial> {
+    @Override
+    public int compareTo(AuditDenial other) {
+      return this.capability.compareTo(other.capability);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) return true;
+      if (!(obj instanceof AuditDenial other)) return false;
+      return capability.equals(other.capability);
+    }
+
+    @Override
+    public int hashCode() {
+      return capability.hashCode();
+    }
   }
 }

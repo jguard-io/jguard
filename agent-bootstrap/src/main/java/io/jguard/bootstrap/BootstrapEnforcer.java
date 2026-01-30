@@ -11,6 +11,11 @@ import java.io.File;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Bootstrap enforcement bridge for jGuard.
@@ -86,6 +91,24 @@ public final class BootstrapEnforcer {
   /** Flag to prevent re-entrant calls during enforcement. */
   private static final ThreadLocal<Boolean> IN_ENFORCEMENT = new ThreadLocal<>();
 
+  // ========== AUDIT MODE DENIAL ACCUMULATION ==========
+
+  /**
+   * Represents a unique denial for audit mode accumulation.
+   *
+   * <p>Denials are considered unique based on (moduleName, packageName, operation, args).
+   */
+  record DenialRecord(String moduleName, String packageName, Operation operation, String args) {}
+
+  /** Thread-safe set of accumulated denials in audit mode. */
+  private static final Set<DenialRecord> auditDenials = ConcurrentHashMap.newKeySet();
+
+  /** Flag to track if shutdown hook is registered. */
+  private static volatile boolean shutdownHookRegistered = false;
+
+  /** Lock object for shutdown hook registration. */
+  private static final Object SHUTDOWN_HOOK_LOCK = new Object();
+
   private BootstrapEnforcer() {}
 
   // ========== CONFIGURATION ==========
@@ -105,11 +128,72 @@ public final class BootstrapEnforcer {
   /**
    * Sets the enforcement mode.
    *
+   * <p>When AUDIT mode is set, registers a JVM shutdown hook to log accumulated denials.
+   *
    * @param enforcementMode the mode to use
    */
   public static void setMode(EnforcementMode enforcementMode) {
     mode = enforcementMode;
     LOG.debug("Enforcement mode set to: {}", enforcementMode);
+
+    // Register shutdown hook for audit mode summary
+    if (enforcementMode == EnforcementMode.AUDIT) {
+      registerAuditShutdownHook();
+    }
+  }
+
+  /**
+   * Registers the audit mode shutdown hook if not already registered.
+   *
+   * <p>The hook logs a summary of all accumulated denials at JVM shutdown.
+   */
+  private static void registerAuditShutdownHook() {
+    if (shutdownHookRegistered) {
+      return;
+    }
+
+    synchronized (SHUTDOWN_HOOK_LOCK) {
+      if (shutdownHookRegistered) {
+        return;
+      }
+
+      Runtime.getRuntime()
+          .addShutdownHook(
+              new Thread(
+                  () -> {
+                    if (auditDenials.isEmpty()) {
+                      return;
+                    }
+
+                    // Group denials by module
+                    Map<String, List<DenialRecord>> byModule =
+                        auditDenials.stream()
+                            .collect(Collectors.groupingBy(DenialRecord::moduleName));
+
+                    // Log summary header
+                    LOG.warn(
+                        "AUDIT SUMMARY: {} unique denial(s) across {} module(s)",
+                        auditDenials.size(),
+                        byModule.size());
+
+                    // Log denials grouped by module
+                    byModule.forEach(
+                        (moduleName, denials) -> {
+                          LOG.warn("  Module: {}", moduleName);
+                          for (DenialRecord denial : denials) {
+                            LOG.warn(
+                                "    DENIED {}: package={}, args={}",
+                                denial.operation(),
+                                denial.packageName(),
+                                denial.args());
+                          }
+                        });
+                  },
+                  "jguard-audit-summary"));
+
+      shutdownHookRegistered = true;
+      LOG.debug("Audit mode shutdown hook registered");
+    }
   }
 
   /**
@@ -494,7 +578,14 @@ public final class BootstrapEnforcer {
 
       if (denial != null) {
         // Access denied
-        if (logDenied) {
+        if (mode == EnforcementMode.AUDIT) {
+          // Audit mode: accumulate denials for summary at shutdown
+          String args = formatArgs(op, arg0, arg1);
+          DenialRecord record =
+              new DenialRecord(caller.moduleName(), caller.packageName(), op, args);
+          auditDenials.add(record);
+        } else if (logDenied) {
+          // Non-audit modes: log immediately
           LOG.warn(
               "DENIED {}: package={}, module={}, args={}",
               op,

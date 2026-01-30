@@ -80,7 +80,58 @@ This separation enables:
 
 - **STRICT** (default): Block denied access, block on errors. Recommended for production.
 - **PERMISSIVE**: Block denied access, allow on errors. Useful for migration.
-- **AUDIT**: Log only, never block. Useful for policy development.
+- **AUDIT**: Log only, never block. Useful for policy development. See [Audit Mode](#audit-mode) below.
+
+## Audit Mode
+
+Audit mode is designed for initial policy authoring and debugging. Instead of blocking operations, it logs all denials and generates suggested policy at JVM shutdown.
+
+### Running in Audit Mode
+
+```bash
+java -javaagent:jguard-agent.jar \
+     -Djguard.mode=audit \
+     -Djguard.allowUnsignedPolicies=true \
+     -jar myapp.jar
+```
+
+### What Happens
+
+1. **During execution**: Operations that would be denied are logged but allowed to proceed
+2. **At shutdown**: The agent prints a summary of all unique denials
+3. **Suggested policy**: Copy-paste-ready `.jguard` syntax is generated
+
+### Example Output
+
+```
+// ============================================================
+// jGuard Audit Mode - Suggested Policy
+// Based on 5 denied operation(s)
+// ============================================================
+
+// Suggested policy for module 'com.google.api.client':
+security module com.google.api.client {
+    entitle com.google.api.client.. to native.load("*");
+    entitle com.google.api.client.. to system.property.read("*");
+    entitle com.google.api.client.. to threads.create;
+}
+
+// Suggested policy for module 'io.netty.common':
+security module io.netty.common {
+    entitle io.netty.common.. to threads.create;
+}
+```
+
+### Workflow
+
+1. Run your application in audit mode
+2. Exercise all code paths (run tests, simulate production load)
+3. Copy the suggested policy output
+4. Paste into your `.jguard` files
+5. Review and refine (remove unnecessary wildcards, tighten paths)
+6. Switch to strict mode for production
+
+This approach discovers all missing entitlements in one run instead of iteratively hitting denials one-by-one.
 
 ## Instrumented Classes (Read Operations)
 
