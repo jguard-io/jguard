@@ -309,4 +309,230 @@ class PolicyDiscoveryTest {
   void setUp() {
     // Ensure we start with a clean slate
   }
+
+  @Nested
+  @DisplayName("External Policy Discovery")
+  class ExternalPolicyDiscoveryTest {
+
+    @Test
+    @DisplayName("discovers external policies from JAR at META-INF/jguard/external/")
+    void discoversExternalPoliciesFromJar() throws Exception {
+      // Create a JAR with external policies (no embedded policy)
+      Path jarPath = createJarWithExternalPolicies(List.of("io.netty.common", "io.netty.handler"));
+
+      String originalClasspath = System.getProperty("java.class.path");
+      try {
+        System.setProperty("java.class.path", jarPath.toString());
+
+        AgentConfig config =
+            new AgentConfig.Builder()
+                .discoveryEnabled(true)
+                .allowUnsignedPolicies(true)
+                .mode(EnforcementMode.STRICT)
+                .build();
+
+        ApplicationPolicy policy = PolicyDiscovery.discoverEmbedded(config);
+
+        assertThat(policy.modules()).hasSize(2);
+        assertThat(policy.hasModule("io.netty.common")).isTrue();
+        assertThat(policy.hasModule("io.netty.handler")).isTrue();
+      } finally {
+        System.setProperty("java.class.path", originalClasspath);
+      }
+    }
+
+    @Test
+    @DisplayName("discovers both embedded and external policies from same JAR")
+    void discoversBothEmbeddedAndExternalFromSameJar() throws Exception {
+      // Create a JAR with both embedded and external policies
+      Path jarPath =
+          createJarWithEmbeddedAndExternalPolicies("com.example.app", List.of("io.netty.common"));
+
+      String originalClasspath = System.getProperty("java.class.path");
+      try {
+        System.setProperty("java.class.path", jarPath.toString());
+
+        AgentConfig config =
+            new AgentConfig.Builder()
+                .discoveryEnabled(true)
+                .allowUnsignedPolicies(true)
+                .mode(EnforcementMode.STRICT)
+                .build();
+
+        ApplicationPolicy policy = PolicyDiscovery.discoverEmbedded(config);
+
+        assertThat(policy.modules()).hasSize(2);
+        assertThat(policy.hasModule("com.example.app")).isTrue();
+        assertThat(policy.hasModule("io.netty.common")).isTrue();
+      } finally {
+        System.setProperty("java.class.path", originalClasspath);
+      }
+    }
+
+    @Test
+    @DisplayName("discovers external policies from directories")
+    void discoversExternalPoliciesFromDirectories() throws Exception {
+      // Create a directory structure with external policies
+      Path classDir = tempDir.resolve("classes");
+      Path externalDir = classDir.resolve(JarSignatureVerifier.EXTERNAL_POLICIES_DIR);
+      Files.createDirectories(externalDir);
+
+      // Create external policy files
+      createPolicyFileAt(externalDir.resolve("io.netty.common.bin"), "io.netty.common");
+      createPolicyFileAt(externalDir.resolve("io.netty.handler.bin"), "io.netty.handler");
+
+      String originalClasspath = System.getProperty("java.class.path");
+      try {
+        System.setProperty("java.class.path", classDir.toString());
+
+        AgentConfig config =
+            new AgentConfig.Builder()
+                .discoveryEnabled(true)
+                .allowUnsignedPolicies(true)
+                .mode(EnforcementMode.STRICT)
+                .build();
+
+        ApplicationPolicy policy = PolicyDiscovery.discoverEmbedded(config);
+
+        assertThat(policy.modules()).hasSize(2);
+        assertThat(policy.hasModule("io.netty.common")).isTrue();
+        assertThat(policy.hasModule("io.netty.handler")).isTrue();
+      } finally {
+        System.setProperty("java.class.path", originalClasspath);
+      }
+    }
+
+    @Test
+    @DisplayName("fails on duplicate external policies from multiple JARs")
+    void failsOnDuplicateExternalPolicies() throws Exception {
+      Path jarA = createJarWithExternalPolicies(List.of("io.netty.common"));
+      Path jarB = createJarWithExternalPolicies(List.of("io.netty.common")); // Same module
+
+      String originalClasspath = System.getProperty("java.class.path");
+      try {
+        System.setProperty("java.class.path", jarA + File.pathSeparator + jarB);
+
+        AgentConfig config =
+            new AgentConfig.Builder()
+                .discoveryEnabled(true)
+                .allowUnsignedPolicies(true)
+                .mode(EnforcementMode.STRICT)
+                .build();
+
+        assertThatThrownBy(() -> PolicyDiscovery.discoverEmbedded(config))
+            .isInstanceOf(PolicyDiscovery.PolicyDiscoveryException.class)
+            .hasMessageContaining("Duplicate policy")
+            .hasMessageContaining("io.netty.common");
+      } finally {
+        System.setProperty("java.class.path", originalClasspath);
+      }
+    }
+  }
+
+  @Nested
+  @DisplayName("JarSignatureVerifier External Policy Methods")
+  class JarSignatureVerifierExternalTest {
+
+    @Test
+    @DisplayName("findExternalPolicyEntries returns entries for external policies")
+    void findExternalPolicyEntriesReturnsEntries() throws Exception {
+      Path jarPath = createJarWithExternalPolicies(List.of("io.netty.common", "io.netty.handler"));
+
+      try (java.util.jar.JarFile jarFile = new java.util.jar.JarFile(jarPath.toFile())) {
+        List<String> entries = JarSignatureVerifier.findExternalPolicyEntries(jarFile);
+        assertThat(entries).hasSize(2);
+        assertThat(entries).anyMatch(e -> e.contains("io.netty.common"));
+        assertThat(entries).anyMatch(e -> e.contains("io.netty.handler"));
+      }
+    }
+
+    @Test
+    @DisplayName("findExternalPolicyEntries returns empty for JAR without external policies")
+    void findExternalPolicyEntriesReturnsEmpty() throws Exception {
+      Path jarPath = createJarWithPolicy("com.example.app");
+
+      try (java.util.jar.JarFile jarFile = new java.util.jar.JarFile(jarPath.toFile())) {
+        List<String> entries = JarSignatureVerifier.findExternalPolicyEntries(jarFile);
+        assertThat(entries).isEmpty();
+      }
+    }
+  }
+
+  // ===== Additional helper methods for external policies =====
+
+  private Path createJarWithExternalPolicies(List<String> moduleNames) throws Exception {
+    Path jarPath = tempDir.resolve("external-policies-" + System.nanoTime() + ".jar");
+
+    try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(jarPath.toFile()))) {
+      for (String moduleName : moduleNames) {
+        ModulePolicy modulePolicy =
+            new ModulePolicy(
+                moduleName,
+                List.of(
+                    new Entitlement(
+                        SubjectPattern.module(), CapabilityGrant.of("threads.create"))));
+        ApplicationPolicy appPolicy = ApplicationPolicy.single(modulePolicy);
+        byte[] policyBytes = BinaryPolicyWriter.toBytes(appPolicy);
+
+        // Add external policy entry
+        String entryName = JarSignatureVerifier.EXTERNAL_POLICIES_DIR + "/" + moduleName + ".bin";
+        jos.putNextEntry(new JarEntry(entryName));
+        jos.write(policyBytes);
+        jos.closeEntry();
+      }
+    }
+
+    return jarPath;
+  }
+
+  private Path createJarWithEmbeddedAndExternalPolicies(
+      String embeddedModule, List<String> externalModules) throws Exception {
+    Path jarPath = tempDir.resolve("mixed-policies-" + System.nanoTime() + ".jar");
+
+    try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(jarPath.toFile()))) {
+      // Add embedded policy
+      ModulePolicy embeddedPolicy =
+          new ModulePolicy(
+              embeddedModule,
+              List.of(
+                  new Entitlement(SubjectPattern.module(), CapabilityGrant.of("threads.create"))));
+      ApplicationPolicy embeddedAppPolicy = ApplicationPolicy.single(embeddedPolicy);
+      byte[] embeddedBytes = BinaryPolicyWriter.toBytes(embeddedAppPolicy);
+
+      jos.putNextEntry(new JarEntry(JarSignatureVerifier.POLICY_LOCATION));
+      jos.write(embeddedBytes);
+      jos.closeEntry();
+
+      // Add external policies
+      for (String moduleName : externalModules) {
+        ModulePolicy externalPolicy =
+            new ModulePolicy(
+                moduleName,
+                List.of(
+                    new Entitlement(
+                        SubjectPattern.module(), CapabilityGrant.of("network.outbound"))));
+        ApplicationPolicy externalAppPolicy = ApplicationPolicy.single(externalPolicy);
+        byte[] externalBytes = BinaryPolicyWriter.toBytes(externalAppPolicy);
+
+        String entryName = JarSignatureVerifier.EXTERNAL_POLICIES_DIR + "/" + moduleName + ".bin";
+        jos.putNextEntry(new JarEntry(entryName));
+        jos.write(externalBytes);
+        jos.closeEntry();
+      }
+    }
+
+    return jarPath;
+  }
+
+  private void createPolicyFileAt(Path path, String moduleName) throws Exception {
+    ModulePolicy modulePolicy =
+        new ModulePolicy(
+            moduleName,
+            List.of(
+                new Entitlement(SubjectPattern.module(), CapabilityGrant.of("threads.create"))));
+    ApplicationPolicy appPolicy = ApplicationPolicy.single(modulePolicy);
+    byte[] policyBytes = BinaryPolicyWriter.toBytes(appPolicy);
+
+    Files.write(path, policyBytes);
+  }
 }

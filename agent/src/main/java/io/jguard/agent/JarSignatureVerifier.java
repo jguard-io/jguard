@@ -36,6 +36,9 @@ public final class JarSignatureVerifier {
   /** Standard location for embedded jGuard policies. */
   public static final String POLICY_LOCATION = "META-INF/jguard/policy.bin";
 
+  /** Standard location for external policies (third-party library policies). */
+  public static final String EXTERNAL_POLICIES_DIR = "META-INF/jguard/external";
+
   private JarSignatureVerifier() {
     // Static utility class
   }
@@ -48,6 +51,28 @@ public final class JarSignatureVerifier {
    */
   public static boolean hasEmbeddedPolicy(JarFile jarFile) {
     return jarFile.getEntry(POLICY_LOCATION) != null;
+  }
+
+  /**
+   * Finds all external policy entries in a JAR file.
+   *
+   * <p>External policies are located at {@code META-INF/jguard/external/*.bin} and provide policies
+   * for third-party libraries that don't ship with their own policies.
+   *
+   * @param jarFile the JAR file to scan
+   * @return list of entry names for external policy files (empty if none found)
+   */
+  public static java.util.List<String> findExternalPolicyEntries(JarFile jarFile) {
+    java.util.List<String> entries = new java.util.ArrayList<>();
+    Enumeration<JarEntry> jarEntries = jarFile.entries();
+    while (jarEntries.hasMoreElements()) {
+      JarEntry entry = jarEntries.nextElement();
+      String name = entry.getName();
+      if (name.startsWith(EXTERNAL_POLICIES_DIR + "/") && name.endsWith(".bin")) {
+        entries.add(name);
+      }
+    }
+    return entries;
   }
 
   /**
@@ -104,7 +129,7 @@ public final class JarSignatureVerifier {
    * @param jarFile the JAR file to check
    * @return true if the JAR has at least one .SF signature file
    */
-  private static boolean hasSignatures(JarFile jarFile) {
+  public static boolean hasSignatures(JarFile jarFile) {
     Enumeration<JarEntry> entries = jarFile.entries();
     while (entries.hasMoreElements()) {
       JarEntry entry = entries.nextElement();
@@ -114,6 +139,26 @@ public final class JarSignatureVerifier {
       }
     }
     return false;
+  }
+
+  /**
+   * Verifies that a specific JAR entry by name is signed.
+   *
+   * @param jarFile the JAR file
+   * @param entryName the name of the entry to verify
+   * @return true if the entry is signed and the signature is valid
+   */
+  public static boolean isEntrySigned(JarFile jarFile, String entryName) {
+    JarEntry entry = jarFile.getJarEntry(entryName);
+    if (entry == null) {
+      return false;
+    }
+    try {
+      return verifyEntry(jarFile, entry);
+    } catch (IOException e) {
+      LOG.debug("Failed to verify entry {}: {}", entryName, e.getMessage());
+      return false;
+    }
   }
 
   /**
