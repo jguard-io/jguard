@@ -194,16 +194,29 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
 
               // 2. Register policy output as part of main source set output.
               //    This tells Gradle that any consumer of this source set (via project
-              //    dependencies) must wait for compileJGuardPolicy. Without this, cross-project
-              //    dependencies would not know about the policy compilation task.
+              //    dependencies) must wait for policy compilation tasks. Without this,
+              // cross-project
+              //    dependencies would not know about the policy compilation tasks.
               //    We register build/jguard-policy (the parent), not the full path, so that
               //    META-INF/jguard/policy.bin structure is preserved in the JAR.
+              //    Both embedded and external policies are built by their respective tasks.
               SourceSetContainer sourceSets =
                   project.getExtensions().getByType(SourceSetContainer.class);
               SourceSet mainSourceSet = sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME);
               Provider<Directory> policyRootDir =
                   project.getLayout().getBuildDirectory().dir("jguard-policy");
-              mainSourceSet.getOutput().dir(Map.of("builtBy", compileTask), policyRootDir);
+
+              // Get the external policies task provider for use in builtBy
+              TaskProvider<CompileExternalPoliciesTask> externalPoliciesTask =
+                  project
+                      .getTasks()
+                      .named(EXTERNAL_POLICIES_TASK_NAME, CompileExternalPoliciesTask.class);
+
+              // Register with both embedded and external policy tasks as builders
+              mainSourceSet
+                  .getOutput()
+                  .dir(
+                      Map.of("builtBy", List.of(compileTask, externalPoliciesTask)), policyRootDir);
 
               // 3. The 'classes' task must depend on compileJGuardPolicy
               project
@@ -218,31 +231,44 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
               // 5. JAR task depends on compileExternalPolicies when external policies exist
               //    External policies are compiled to build/jguard-policy/META-INF/jguard/external/
               //    and should be included in the JAR alongside embedded policies.
-              TaskProvider<CompileExternalPoliciesTask> externalPoliciesTaskProvider =
-                  project
-                      .getTasks()
-                      .named(EXTERNAL_POLICIES_TASK_NAME, CompileExternalPoliciesTask.class);
+              //    We explicitly add the external policies to the JAR in case the
+              // sourceSets.main.output
+              //    registration isn't being picked up by custom JAR configurations.
               project
                   .getTasks()
                   .named(
                       JavaPlugin.JAR_TASK_NAME,
                       Jar.class,
-                      jar ->
-                          jar.dependsOn(
-                              project.provider(
-                                  () -> {
-                                    if (extension.getExternalPoliciesSourceDir().isPresent()) {
-                                      File sourceDir =
-                                          extension
-                                              .getExternalPoliciesSourceDir()
-                                              .get()
-                                              .getAsFile();
-                                      if (sourceDir.exists() && sourceDir.isDirectory()) {
-                                        return externalPoliciesTaskProvider;
-                                      }
+                      jar -> {
+                        jar.dependsOn(
+                            project.provider(
+                                () -> {
+                                  if (extension.getExternalPoliciesSourceDir().isPresent()) {
+                                    File sourceDir =
+                                        extension.getExternalPoliciesSourceDir().get().getAsFile();
+                                    if (sourceDir.exists() && sourceDir.isDirectory()) {
+                                      return externalPoliciesTask;
                                     }
-                                    return project.files();
-                                  })));
+                                  }
+                                  return project.files();
+                                }));
+
+                        // Explicitly include external policies in JAR
+                        // This ensures they're included even if custom JAR packaging is used
+                        // The policyRootDir (build/jguard-policy) contains META-INF/jguard/...
+                        jar.from(
+                            project.provider(
+                                () -> {
+                                  if (extension.getExternalPoliciesSourceDir().isPresent()) {
+                                    File sourceDir =
+                                        extension.getExternalPoliciesSourceDir().get().getAsFile();
+                                    if (sourceDir.exists() && sourceDir.isDirectory()) {
+                                      return policyRootDir.get().getAsFile();
+                                    }
+                                  }
+                                  return project.files();
+                                }));
+                      });
 
               // 6. compileTestJava depends on compileExternalPolicies when external policies exist
               //    External policies output to build/jguard-policy which is part of main source set
@@ -263,7 +289,7 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                                               .get()
                                               .getAsFile();
                                       if (sourceDir.exists() && sourceDir.isDirectory()) {
-                                        return externalPoliciesTaskProvider;
+                                        return externalPoliciesTask;
                                       }
                                     }
                                     return project.files();
@@ -356,7 +382,7 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                         task.dependsOn(compileTask);
 
                         // Also depend on external policies if configured
-                        // (reuse externalPoliciesTaskProvider from above)
+                        // (reuse externalPoliciesTask from above)
                         task.dependsOn(
                             project.provider(
                                 () -> {
@@ -364,7 +390,7 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                                     File sourceDir =
                                         extension.getExternalPoliciesSourceDir().get().getAsFile();
                                     if (sourceDir.exists() && sourceDir.isDirectory()) {
-                                      return externalPoliciesTaskProvider;
+                                      return externalPoliciesTask;
                                     }
                                   }
                                   return project.files(); // Empty dependency if not configured

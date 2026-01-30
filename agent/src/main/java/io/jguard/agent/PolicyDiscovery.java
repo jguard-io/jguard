@@ -127,6 +127,16 @@ public final class PolicyDiscovery {
           "Policy discovery complete: {} module(s), {} total entitlements",
           policies.size(),
           policies.stream().mapToInt(p -> p.entitlements().size()).sum());
+
+      // Log all discovered modules at debug level
+      LOG.debug("Discovered modules:");
+      for (ModulePolicy mp : policies) {
+        LOG.debug(
+            "  - {} ({} entitlements, trusted={})",
+            mp.moduleName(),
+            mp.entitlements().size(),
+            mp.trusted());
+      }
     }
 
     return ApplicationPolicy.create(policies);
@@ -155,6 +165,9 @@ public final class PolicyDiscovery {
       Map<String, String> moduleToSource)
       throws PolicyDiscoveryException {
 
+    LOG.debug("Starting JAR scan for embedded and external policies");
+    LOG.debug("allowUnsignedPolicies={}", config.allowUnsignedPolicies());
+
     for (Path jarPath : jarPaths) {
       try (JarFile jarFile = new JarFile(jarPath.toFile(), true)) { // true = verify signatures
         boolean hasEmbedded = JarSignatureVerifier.hasEmbeddedPolicy(jarFile);
@@ -162,6 +175,15 @@ public final class PolicyDiscovery {
 
         if (!hasEmbedded && externalEntries.isEmpty()) {
           continue;
+        }
+
+        LOG.debug(
+            "JAR {} has policies: embedded={}, external={}",
+            jarPath.getFileName(),
+            hasEmbedded,
+            externalEntries.size());
+        if (!externalEntries.isEmpty()) {
+          LOG.debug("External policy entries in {}: {}", jarPath.getFileName(), externalEntries);
         }
 
         // Check signature (unless unsigned allowed)
@@ -185,9 +207,17 @@ public final class PolicyDiscovery {
           }
           isSignedJar = true;
         } else {
-          LOG.debug("Allowing unsigned policies from {} (development mode)", jarPath);
+          LOG.debug(
+              "Allowing unsigned policies from {} (development mode, allowUnsignedPolicies=true)",
+              jarPath.getFileName());
           isSignedJar = false;
         }
+
+        LOG.debug(
+            "Processing {} policies from {}: isSignedJar={}",
+            hasEmbedded ? "embedded" : "" + (!externalEntries.isEmpty() ? " + external" : ""),
+            jarPath.getFileName(),
+            isSignedJar);
 
         // Discover embedded policy
         if (hasEmbedded) {
@@ -221,7 +251,13 @@ public final class PolicyDiscovery {
         }
 
         // Discover external policies
+        LOG.debug(
+            "Processing {} external policy entries from {}",
+            externalEntries.size(),
+            jarPath.getFileName());
         for (String entryName : externalEntries) {
+          LOG.debug("Reading external policy entry: {}", entryName);
+
           // Verify signature on each external policy entry
           if (isSignedJar && !config.allowUnsignedPolicies()) {
             if (!JarSignatureVerifier.isEntrySigned(jarFile, entryName)) {
@@ -231,6 +267,11 @@ public final class PolicyDiscovery {
           }
 
           ModulePolicy policy = readExternalPolicy(jarFile, entryName);
+          LOG.debug(
+              "Read external policy: module='{}', entitlements={}, trusted={}",
+              policy.moduleName(),
+              policy.entitlements().size(),
+              policy.trusted());
 
           // Check for duplicates
           String existingSource = moduleToSource.get(policy.moduleName());
@@ -312,7 +353,14 @@ public final class PolicyDiscovery {
       Map<String, String> moduleToSource)
       throws PolicyDiscoveryException {
 
+    LOG.debug("Starting directory scan for embedded and external policies");
+    LOG.debug(
+        "Scanning {} directories, allowUnsignedPolicies={}",
+        dirPaths.size(),
+        config.allowUnsignedPolicies());
+
     for (Path dirPath : dirPaths) {
+      LOG.debug("Checking directory: {}", dirPath);
       // Directory-based policies require allowUnsignedPolicies since directories can't be signed
       if (!config.allowUnsignedPolicies()) {
         Path policyFile = dirPath.resolve(JarSignatureVerifier.POLICY_LOCATION);
@@ -356,9 +404,14 @@ public final class PolicyDiscovery {
 
       // Discover external policies
       Path externalDir = dirPath.resolve(JarSignatureVerifier.EXTERNAL_POLICIES_DIR);
+      LOG.debug(
+          "Checking for external policies at: {} (exists={})",
+          externalDir,
+          Files.isDirectory(externalDir));
       if (Files.isDirectory(externalDir)) {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(externalDir, "*.bin")) {
           for (Path externalPolicyFile : stream) {
+            LOG.debug("Found external policy file: {}", externalPolicyFile);
             try {
               ModulePolicy policy = readPolicyFromDirectory(externalPolicyFile);
 
