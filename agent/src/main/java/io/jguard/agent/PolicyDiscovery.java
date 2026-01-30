@@ -14,6 +14,7 @@ import io.jguard.policy.model.ModulePolicy;
 import io.jguard.policy.serialization.BinaryPolicyReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -26,12 +27,20 @@ import java.util.jar.JarFile;
 /**
  * Discovers embedded jGuard policies from JARs and directories on the module/class path.
  *
- * <p>This class scans for embedded policies at {@code META-INF/jguard/policy.bin} in both:
+ * <p>This class scans for policies at:
  *
  * <ul>
- *   <li>JAR files (production deployments)
- *   <li>Directory entries (development/testing with Gradle class directories)
+ *   <li>{@code META-INF/jguard/policy.bin} - Embedded policy for the module itself
+ *   <li>{@code META-INF/jguard/external/*.bin} - External policies for third-party libraries
  * </ul>
+ *
+ * <p>Both JAR files (production) and directories (development/testing) are scanned.
+ *
+ * <h2>External Policies</h2>
+ *
+ * <p>External policies allow modules to ship policies for their runtime dependencies (e.g., Netty,
+ * Reactor, Jackson) that don't have native jGuard support. When a module's JAR contains external
+ * policies, they are automatically discovered and applied to the named modules.
  *
  * <h2>Security Model</h2>
  *
@@ -126,6 +135,13 @@ public final class PolicyDiscovery {
   /**
    * Discovers policies from JAR files.
    *
+   * <p>This method scans each JAR for:
+   *
+   * <ul>
+   *   <li>Embedded policy at {@code META-INF/jguard/policy.bin}
+   *   <li>External policies at {@code META-INF/jguard/external/*.bin}
+   * </ul>
+   *
    * @param config the agent configuration
    * @param jarPaths the JAR files to scan
    * @param policies the list to add discovered policies to
@@ -141,42 +157,98 @@ public final class PolicyDiscovery {
 
     for (Path jarPath : jarPaths) {
       try (JarFile jarFile = new JarFile(jarPath.toFile(), true)) { // true = verify signatures
-        if (!JarSignatureVerifier.hasEmbeddedPolicy(jarFile)) {
+        boolean hasEmbedded = JarSignatureVerifier.hasEmbeddedPolicy(jarFile);
+        List<String> externalEntries = JarSignatureVerifier.findExternalPolicyEntries(jarFile);
+
+        if (!hasEmbedded && externalEntries.isEmpty()) {
           continue;
         }
 
         // Check signature (unless unsigned allowed)
+        boolean isSignedJar = true;
         if (!config.allowUnsignedPolicies()) {
-          if (!JarSignatureVerifier.isSignedAndValid(jarFile)) {
-            LOG.warn(
-                "Skipping unsigned JAR with embedded policy: {}. "
-                    + "Set -Djguard.allowUnsignedPolicies=true for development.",
-                jarPath);
+          if (!JarSignatureVerifier.hasSignatures(jarFile)) {
+            if (hasEmbedded) {
+              LOG.warn(
+                  "Skipping unsigned JAR with embedded policy: {}. "
+                      + "Set -Djguard.allowUnsignedPolicies=true for development.",
+                  jarPath);
+            }
+            if (!externalEntries.isEmpty()) {
+              LOG.warn(
+                  "Skipping {} external policies from unsigned JAR: {}. "
+                      + "Set -Djguard.allowUnsignedPolicies=true for development.",
+                  externalEntries.size(),
+                  jarPath);
+            }
             continue;
           }
+          isSignedJar = true;
         } else {
-          LOG.debug("Allowing unsigned policy from {} (development mode)", jarPath);
+          LOG.debug("Allowing unsigned policies from {} (development mode)", jarPath);
+          isSignedJar = false;
         }
 
-        // Read the embedded policy
-        ModulePolicy policy = readEmbeddedPolicy(jarFile);
+        // Discover embedded policy
+        if (hasEmbedded) {
+          // Verify signature on the embedded policy entry
+          if (isSignedJar && !config.allowUnsignedPolicies()) {
+            if (!JarSignatureVerifier.isEntrySigned(
+                jarFile, JarSignatureVerifier.POLICY_LOCATION)) {
+              LOG.warn("JAR {} embedded policy entry is not signed", jarPath);
+              continue;
+            }
+          }
 
-        // Check for duplicates
-        String existingSource = moduleToSource.get(policy.moduleName());
-        if (existingSource != null) {
-          throw new PolicyDiscoveryException(
-              String.format(
-                  "Duplicate policy for module '%s' found in:%n  - %s%n  - %s",
-                  policy.moduleName(), existingSource, jarPath));
+          ModulePolicy policy = readEmbeddedPolicy(jarFile);
+
+          // Check for duplicates
+          String existingSource = moduleToSource.get(policy.moduleName());
+          if (existingSource != null) {
+            throw new PolicyDiscoveryException(
+                String.format(
+                    "Duplicate policy for module '%s' found in:%n  - %s%n  - %s",
+                    policy.moduleName(), existingSource, jarPath));
+          }
+
+          moduleToSource.put(policy.moduleName(), jarPath.toString());
+          policies.add(policy);
+          LOG.info(
+              "Discovered policy for module '{}' from {} ({} entitlements)",
+              policy.moduleName(),
+              jarPath.getFileName(),
+              policy.entitlements().size());
         }
 
-        moduleToSource.put(policy.moduleName(), jarPath.toString());
-        policies.add(policy);
-        LOG.info(
-            "Discovered policy for module '{}' from {} ({} entitlements)",
-            policy.moduleName(),
-            jarPath.getFileName(),
-            policy.entitlements().size());
+        // Discover external policies
+        for (String entryName : externalEntries) {
+          // Verify signature on each external policy entry
+          if (isSignedJar && !config.allowUnsignedPolicies()) {
+            if (!JarSignatureVerifier.isEntrySigned(jarFile, entryName)) {
+              LOG.warn("JAR {} external policy entry {} is not signed", jarPath, entryName);
+              continue;
+            }
+          }
+
+          ModulePolicy policy = readExternalPolicy(jarFile, entryName);
+
+          // Check for duplicates
+          String existingSource = moduleToSource.get(policy.moduleName());
+          if (existingSource != null) {
+            throw new PolicyDiscoveryException(
+                String.format(
+                    "Duplicate policy for module '%s' found in:%n  - %s%n  - %s (external)",
+                    policy.moduleName(), existingSource, jarPath));
+          }
+
+          moduleToSource.put(policy.moduleName(), jarPath.toString() + "!" + entryName);
+          policies.add(policy);
+          LOG.info(
+              "Discovered external policy for module '{}' from {} ({} entitlements)",
+              policy.moduleName(),
+              jarPath.getFileName(),
+              policy.entitlements().size());
+        }
 
       } catch (IOException e) {
         LOG.warn("Failed to read JAR {}: {}", jarPath, e.getMessage());
@@ -187,10 +259,45 @@ public final class PolicyDiscovery {
   }
 
   /**
+   * Reads an external policy from a JAR file.
+   *
+   * @param jarFile the JAR file containing the policy
+   * @param entryName the name of the entry (e.g., META-INF/jguard/external/io.netty.common.bin)
+   * @return the module policy
+   * @throws IOException if the policy cannot be read
+   */
+  private static ModulePolicy readExternalPolicy(JarFile jarFile, String entryName)
+      throws IOException {
+    JarEntry entry = jarFile.getJarEntry(entryName);
+    if (entry == null) {
+      throw new IOException("No policy found at " + entryName);
+    }
+
+    try (InputStream is = jarFile.getInputStream(entry)) {
+      ApplicationPolicy appPolicy = BinaryPolicyReader.readApplicationPolicy(is);
+
+      // External policies should contain exactly one module
+      if (appPolicy.modules().isEmpty()) {
+        throw new IOException("External policy contains no modules: " + entryName);
+      }
+      if (appPolicy.modules().size() > 1) {
+        throw new IOException(
+            "External policy contains multiple modules ("
+                + appPolicy.modules().size()
+                + "). Each file should contain policy for one module: "
+                + entryName);
+      }
+
+      return appPolicy.modules().get(0);
+    }
+  }
+
+  /**
    * Discovers policies from directory entries on the classpath.
    *
    * <p>This supports development/testing scenarios where Gradle outputs compiled policies to class
-   * directories rather than JARs.
+   * directories rather than JARs. Both embedded policies ({@code META-INF/jguard/policy.bin}) and
+   * external policies ({@code META-INF/jguard/external/*.bin}) are discovered.
    *
    * @param config the agent configuration
    * @param dirPaths the directories to scan
@@ -206,42 +313,81 @@ public final class PolicyDiscovery {
       throws PolicyDiscoveryException {
 
     for (Path dirPath : dirPaths) {
-      Path policyFile = dirPath.resolve(JarSignatureVerifier.POLICY_LOCATION);
-      if (!Files.exists(policyFile)) {
-        continue;
-      }
-
       // Directory-based policies require allowUnsignedPolicies since directories can't be signed
       if (!config.allowUnsignedPolicies()) {
-        LOG.warn(
-            "Skipping directory-based policy at {}. "
-                + "Set -Djguard.allowUnsignedPolicies=true for development.",
-            policyFile);
+        Path policyFile = dirPath.resolve(JarSignatureVerifier.POLICY_LOCATION);
+        Path externalDir = dirPath.resolve(JarSignatureVerifier.EXTERNAL_POLICIES_DIR);
+        if (Files.exists(policyFile) || Files.isDirectory(externalDir)) {
+          LOG.warn(
+              "Skipping directory-based policies at {}. "
+                  + "Set -Djguard.allowUnsignedPolicies=true for development.",
+              dirPath);
+        }
         continue;
       }
 
-      try {
-        ModulePolicy policy = readPolicyFromDirectory(policyFile);
+      // Discover embedded policy
+      Path policyFile = dirPath.resolve(JarSignatureVerifier.POLICY_LOCATION);
+      if (Files.exists(policyFile)) {
+        try {
+          ModulePolicy policy = readPolicyFromDirectory(policyFile);
 
-        // Check for duplicates
-        String existingSource = moduleToSource.get(policy.moduleName());
-        if (existingSource != null) {
-          throw new PolicyDiscoveryException(
-              String.format(
-                  "Duplicate policy for module '%s' found in:%n  - %s%n  - %s",
-                  policy.moduleName(), existingSource, dirPath));
+          // Check for duplicates
+          String existingSource = moduleToSource.get(policy.moduleName());
+          if (existingSource != null) {
+            throw new PolicyDiscoveryException(
+                String.format(
+                    "Duplicate policy for module '%s' found in:%n  - %s%n  - %s",
+                    policy.moduleName(), existingSource, dirPath));
+          }
+
+          moduleToSource.put(policy.moduleName(), dirPath.toString());
+          policies.add(policy);
+          LOG.info(
+              "Discovered policy for module '{}' from directory {} ({} entitlements)",
+              policy.moduleName(),
+              dirPath,
+              policy.entitlements().size());
+
+        } catch (IOException e) {
+          LOG.warn("Failed to read policy from directory {}: {}", dirPath, e.getMessage());
         }
+      }
 
-        moduleToSource.put(policy.moduleName(), dirPath.toString());
-        policies.add(policy);
-        LOG.info(
-            "Discovered policy for module '{}' from directory {} ({} entitlements)",
-            policy.moduleName(),
-            dirPath,
-            policy.entitlements().size());
+      // Discover external policies
+      Path externalDir = dirPath.resolve(JarSignatureVerifier.EXTERNAL_POLICIES_DIR);
+      if (Files.isDirectory(externalDir)) {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(externalDir, "*.bin")) {
+          for (Path externalPolicyFile : stream) {
+            try {
+              ModulePolicy policy = readPolicyFromDirectory(externalPolicyFile);
 
-      } catch (IOException e) {
-        LOG.warn("Failed to read policy from directory {}: {}", dirPath, e.getMessage());
+              // Check for duplicates
+              String existingSource = moduleToSource.get(policy.moduleName());
+              if (existingSource != null) {
+                throw new PolicyDiscoveryException(
+                    String.format(
+                        "Duplicate policy for module '%s' found in:%n  - %s%n  - %s (external)",
+                        policy.moduleName(), existingSource, externalPolicyFile));
+              }
+
+              moduleToSource.put(policy.moduleName(), externalPolicyFile.toString());
+              policies.add(policy);
+              LOG.info(
+                  "Discovered external policy for module '{}' from directory {} ({} entitlements)",
+                  policy.moduleName(),
+                  externalPolicyFile.getFileName(),
+                  policy.entitlements().size());
+
+            } catch (IOException e) {
+              LOG.warn(
+                  "Failed to read external policy from {}: {}", externalPolicyFile, e.getMessage());
+            }
+          }
+        } catch (IOException e) {
+          LOG.warn(
+              "Failed to scan external policies directory {}: {}", externalDir, e.getMessage());
+        }
       }
     }
   }

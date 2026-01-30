@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Test-specific policy overrides**: New `src/test/jguard/` directory support for test-only policies. Test policies extend embedded policies with additional permissions needed during testing (e.g., temp file access, thread creation). Policies are compiled by the `compileTestPolicies` task and automatically passed to the agent during test execution.
 - **Multi-directory policy overrides**: The agent now supports comma-separated paths in `-Djguard.policy.override`, allowing layered policy overrides. Later directories take precedence.
+- **Embedded external policies**: Modules can now ship policies for third-party dependencies by placing them in `src/main/jguard/`. These policies are compiled to `META-INF/jguard/external/*.bin` in the JAR and automatically discovered by the agent alongside embedded policies. This enables applications to define capabilities for runtime dependencies (e.g., Netty, Reactor) without requiring manual `-Djguard.policy.override` configuration. Same signing requirements apply as embedded policies.
 
 ### Fixed
 

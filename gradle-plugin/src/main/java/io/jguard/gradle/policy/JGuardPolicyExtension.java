@@ -137,18 +137,22 @@ public abstract class JGuardPolicyExtension {
   /**
    * The source directory containing external policy {@code .jguard} files.
    *
-   * <p>All {@code *.jguard} files in this directory will be compiled to binary format. The output
-   * filename will be derived from the source filename (e.g., {@code _global.jguard} becomes {@code
-   * _global.bin}, {@code com.example.lib.jguard} becomes {@code com.example.lib.bin}).
+   * <p>All {@code *.jguard} files in this directory will be compiled to binary format and packaged
+   * into the JAR at {@code META-INF/jguard/external/}. These policies provide capabilities for
+   * third-party libraries that don't ship with their own jGuard policies.
    *
-   * <p>Default: not set (external policy compilation disabled)
+   * <p>The output filename will be derived from the source filename (e.g., {@code io.netty.jguard}
+   * becomes {@code io.netty.bin}).
+   *
+   * <p>Default: {@code src/main/jguard} (mirrors {@code src/test/jguard} for test policies)
    *
    * <p>Example usage:
    *
    * <pre>
-   * jguardPolicy {
-   *     externalPoliciesSourceDir = file("policies-src")
-   *     externalPoliciesOutputDir = file("policies")
+   * // File: src/main/jguard/io.netty.common.jguard
+   * security module io.netty.common {
+   *     entitle io.netty.common.. to threads.create;
+   *     entitle io.netty.common.. to network.outbound;
    * }
    * </pre>
    */
@@ -157,10 +161,10 @@ public abstract class JGuardPolicyExtension {
   /**
    * The output directory for compiled external policy {@code .bin} files.
    *
-   * <p>This is the directory that should be passed to the jGuard agent via {@code
-   * -Djguard.policy.override=/path/to/policies}.
+   * <p>This directory is automatically included in the JAR at {@code META-INF/jguard/external/}.
+   * The agent discovers these policies alongside embedded policies.
    *
-   * <p>Default: {@code build/external-policies/}
+   * <p>Default: {@code build/jguard-policy/META-INF/jguard/external/}
    */
   public abstract DirectoryProperty getExternalPoliciesOutputDir();
 
