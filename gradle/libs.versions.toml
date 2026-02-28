@@ -1,5 +1,5 @@
 [versions]
-spotless = "8.1.0"
+spotless = "8.2.1"
 shadow = "9.3.1"
 junit = "5.11.0"
 assertj = "3.27.6"
