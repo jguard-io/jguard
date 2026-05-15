@@ -180,16 +180,19 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                   });
             });
 
-    // Register policy output directories with the clean task
+    // Register policy output directories with the clean task (if it exists)
     // This ensures ./gradlew clean removes stale .bin files
+    // Use matching() to safely configure only if the clean task exists (from base plugin)
     project
         .getTasks()
-        .named(
-            "clean",
-            Delete.class,
-            clean -> {
-              clean.delete(project.getLayout().getBuildDirectory().dir("jguard-policy"));
-              clean.delete(project.getLayout().getBuildDirectory().dir("test-policies"));
+        .matching(task -> task.getName().equals("clean"))
+        .configureEach(
+            task -> {
+              if (task instanceof Delete) {
+                Delete clean = (Delete) task;
+                clean.delete(project.getLayout().getBuildDirectory().dir("jguard-policy"));
+                clean.delete(project.getLayout().getBuildDirectory().dir("test-policies"));
+              }
             });
 
     // Integrate with jar task if Java plugin is applied
@@ -541,11 +544,26 @@ public class JGuardPolicyPlugin implements Plugin<Project> {
                   project.getTasks().named(JavaPlugin.JAR_TASK_NAME, Jar.class);
               task.dependsOn(jarTask);
 
-              // Combine runtime classpath with project JAR for discovery mode
+              // Combine runtime classpath with project JAR for discovery mode.
+              // Filter out the build/jguard-policy directory since the policy is
+              // already embedded in the project JAR — having both causes duplicate
+              // policy discovery errors.
+              Provider<Directory> policyOutputDir =
+                  project.getLayout().getBuildDirectory().dir("jguard-policy");
               task.setClasspath(
                   project
                       .files(jarTask.flatMap(Jar::getArchiveFile))
-                      .plus(mainSourceSet.getRuntimeClasspath()));
+                      .plus(
+                          mainSourceSet
+                              .getRuntimeClasspath()
+                              .filter(
+                                  f ->
+                                      !f.getAbsolutePath()
+                                          .startsWith(
+                                              policyOutputDir
+                                                  .get()
+                                                  .getAsFile()
+                                                  .getAbsolutePath()))));
 
               // Configure JVM arguments with agent
               task.doFirst(

@@ -577,6 +577,9 @@ public final class BootstrapEnforcer {
       SecurityException denial = cb.check(caller.toContext(), op, arg0, arg1);
 
       if (denial != null) {
+        // Always increment denial counters (all modes, zero overhead)
+        DenialCounters.increment(op);
+
         // Access denied
         if (mode == EnforcementMode.AUDIT) {
           // Audit mode: accumulate denials for summary at shutdown
@@ -584,14 +587,32 @@ public final class BootstrapEnforcer {
           DenialRecord record =
               new DenialRecord(caller.moduleName(), caller.packageName(), op, args);
           auditDenials.add(record);
+          if (logDenied) {
+            LOG.warn(
+                "DENIED {}: package={}, module={}, args={}",
+                op,
+                caller.packageName(),
+                caller.moduleName(),
+                args);
+          }
         } else if (logDenied) {
-          // Non-audit modes: log immediately
-          LOG.warn(
-              "DENIED {}: package={}, module={}, args={}",
-              op,
-              caller.packageName(),
-              caller.moduleName(),
-              formatArgs(op, arg0, arg1));
+          // STRICT: log at ERROR (denials are real problems, must not be missed)
+          // PERMISSIVE: log at WARN
+          if (mode == EnforcementMode.STRICT) {
+            LOG.error(
+                "DENIED {}: package={}, module={}, args={}",
+                op,
+                caller.packageName(),
+                caller.moduleName(),
+                formatArgs(op, arg0, arg1));
+          } else {
+            LOG.warn(
+                "DENIED {}: package={}, module={}, args={}",
+                op,
+                caller.packageName(),
+                caller.moduleName(),
+                formatArgs(op, arg0, arg1));
+          }
         }
         if (mode.blocksOnDenied()) {
           throw denial;
@@ -656,11 +677,11 @@ public final class BootstrapEnforcer {
     String args = formatArgs(op, arg0, arg1);
     if (mode.blocksOnError()) {
       String msg = e != null ? e.getMessage() : "unknown error";
-      LOG.error("{}: {} - blocking {} for {}", context, msg, op, args);
+      LOG.error("{}: {} - blocking {} for {}", context, msg, op, args, e);
       throw new SecurityException("jGuard: enforcement error - " + context + ": " + msg);
     } else {
       String msg = e != null ? e.getMessage() : "unknown error";
-      LOG.warn("{}: {} - allowing {} for {} (mode={})", context, msg, op, args, mode);
+      LOG.warn("{}: {} - allowing {} for {} (mode={})", context, msg, op, args, mode, e);
     }
   }
 
