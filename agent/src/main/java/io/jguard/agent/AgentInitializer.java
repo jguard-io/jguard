@@ -22,9 +22,12 @@ import io.jguard.policy.serialization.BinaryPolicyReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.management.ObjectName;
+import javax.management.StandardMBean;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
@@ -101,6 +104,9 @@ public final class AgentInitializer {
 
     // Configure the bootstrap enforcer
     configureBootstrapEnforcer();
+
+    // Register JMX MBean for denial counters (always on, zero config)
+    registerDenialCountersMBean();
 
     // Install instrumentation
     installInstrumentation(inst);
@@ -190,6 +196,21 @@ public final class AgentInitializer {
     io.jguard.bootstrap.BootstrapEnforcer.setLogging(config.logDenied(), config.logAllowed());
 
     LOG.debug("Bootstrap enforcer configured successfully");
+  }
+
+  /** Registers the denial counters JMX MBean. Failures are logged but don't prevent startup. */
+  private static void registerDenialCountersMBean() {
+    try {
+      var server = ManagementFactory.getPlatformMBeanServer();
+      var name = new ObjectName("io.jguard:type=DenialCounters");
+      if (!server.isRegistered(name)) {
+        server.registerMBean(
+            new StandardMBean(new DenialCountersMBeanImpl(), DenialCountersMBean.class), name);
+        LOG.debug("JMX MBean registered: {}", name);
+      }
+    } catch (Exception e) {
+      LOG.warn("Failed to register JMX MBean: {}", e.getMessage());
+    }
   }
 
   private static void installInstrumentation(Instrumentation inst) {
