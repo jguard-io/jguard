@@ -36,6 +36,6 @@ bytebuddy = ["bytebuddy", "bytebuddy-agent"]
 [plugins]
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
-plugin-publish = { id = "com.gradle.plugin-publish", version = "2.0.0" }
+plugin-publish = { id = "com.gradle.plugin-publish", version = "2.1.0" }
 maven-publish = { id = "com.vanniktech.maven.publish", version = "0.30.0" }
 
