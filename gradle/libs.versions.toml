@@ -1,7 +1,7 @@
 [versions]
 spotless = "8.2.1"
 shadow = "9.3.1"
-junit = "5.11.0"
+junit = "6.0.2"
 assertj = "3.27.6"
 slf4j = "2.0.17"
 jackson = "2.17.2"
