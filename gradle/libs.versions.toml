@@ -5,7 +5,7 @@ junit = "5.11.0"
 assertj = "3.27.6"
 slf4j = "2.0.17"
 jackson = "2.17.2"
-bytebuddy = "1.18.7"
+bytebuddy = "1.18.8"
 picocli = "4.7.7"
 
 [libraries]
