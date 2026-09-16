@@ -213,6 +213,43 @@ public final class AgentInitializer {
     }
   }
 
+  /**
+   * Resolves every advice class before any instrumentation is installed.
+   *
+   * <p>{@code Advice.to(SomeAdvice.class)} is evaluated inside the transformer, and it reflects
+   * over the advice class to read its declared methods. That reflection can load classes, and doing
+   * it while the JVM is midway through transforming a bootstrap class raises a {@link
+   * ClassCircularityError} - which the listener logs and then swallows, leaving the target
+   * uninstrumented. {@code java.lang.ProcessBuilder} failed exactly this way on every run, so
+   * process execution went unguarded while the agent reported itself as installed.
+   *
+   * <p>Touching the advice classes here moves that resolution outside any transformation. It walks
+   * the interceptors rather than naming each advice class, so advice added later is covered without
+   * anyone having to remember a list.
+   */
+  private static void warmUpAdviceClasses() {
+    Class<?>[] interceptors = {
+      EnvInterceptor.class,
+      FilesystemInterceptor.class,
+      NativeInterceptor.class,
+      NetworkInterceptor.class,
+      ProcessInterceptor.class,
+      PropertyInterceptor.class,
+      RuntimeInterceptor.class,
+      SecurityInterceptor.class,
+      ThreadInterceptor.class,
+    };
+    for (Class<?> interceptor : interceptors) {
+      for (Class<?> advice : interceptor.getDeclaredClasses()) {
+        try {
+          advice.getDeclaredMethods();
+        } catch (LinkageError e) {
+          LOG.warn("Could not pre-resolve advice class {}: {}", advice.getName(), e.getMessage());
+        }
+      }
+    }
+  }
+
   private static void installInstrumentation(Instrumentation inst) {
     LOG.debug("Installing instrumentation...");
 
@@ -220,6 +257,9 @@ public final class AgentInitializer {
     if (!inst.isRetransformClassesSupported()) {
       LOG.warn("Retransformation not supported - network instrumentation may not work");
     }
+
+    // Resolve the advice classes before transformation starts - see warmUpAdviceClasses().
+    warmUpAdviceClasses();
 
     new AgentBuilder.Default()
         .disableClassFormatChanges()
