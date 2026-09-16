@@ -93,6 +93,18 @@ shadowJar.doLast {
   }
 }
 
+// AgentTransformationTest forks a JVM with the shaded agent attached, because the failure it guards
+// against only happens when advice classes are resolved during transformation - which never occurs
+// when ByteBuddy is driven from the ordinary test classpath. Resolved in doFirst so the jar path is
+// not read at configuration time.
+tasks.named("test") {
+  def agentJarProvider = tasks.named("shadowJar").flatMap { it.archiveFile }
+  dependsOn(tasks.named("shadowJar"))
+  doFirst {
+    systemProperty("jguard.agent.jar", agentJarProvider.get().asFile.absolutePath)
+  }
+}
+
 // Disable the standard jar - shadowJar replaces it
 jar.enabled = false
 
