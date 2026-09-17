@@ -88,6 +88,32 @@ public final class BootstrapEnforcer {
   /** Skip prefixes for caller attribution. */
   private static volatile String[] skipPrefixes = DEFAULT_SKIP_PREFIXES;
 
+  /**
+   * One walker for the process.
+   *
+   * <p>{@code StackWalker.getInstance} allocates, and attribution runs on every intercepted
+   * operation -- every property read, file open and socket connect the JVM performs. The instance
+   * is immutable and thread-safe, so there is no reason to build one per call.
+   */
+  private static final StackWalker WALKER =
+      StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
+
+  /**
+   * Attribution is a pure function of the calling class, so it is computed once per class.
+   *
+   * <p>A {@link ClassValue} is the right shape for this: it is keyed by {@code Class}, and it does
+   * not pin classes the way a {@code Map<Class, ?>} would, so a host that loads and discards
+   * classloaders is not leaked by the act of being guarded.
+   *
+   * <p>Holds the answer for classes that ARE application code. "No application frame anywhere on
+   * the stack" is a property of a stack rather than of a class, so it is not cached -- {@link
+   * #determineCallerContext()} returns null for it.
+   */
+  private static volatile ClassValue<CallerContext> callerContexts = newCallerContexts();
+
+  /** Memoises the prefix scan, which otherwise re-tests nine prefixes per frame per call. */
+  private static volatile ClassValue<Boolean> applicationCode = newApplicationCode();
+
   /** Flag to prevent re-entrant calls during enforcement. */
   private static final ThreadLocal<Boolean> IN_ENFORCEMENT = new ThreadLocal<>();
 
@@ -216,6 +242,10 @@ public final class BootstrapEnforcer {
    */
   public static void setSkipPrefixes(String[] prefixes) {
     skipPrefixes = (prefixes == null) ? DEFAULT_SKIP_PREFIXES : prefixes.clone();
+    // Both caches answered according to the OLD prefixes. ClassValue.remove is per key and the key
+    // set is every class ever seen, so replace the caches wholesale rather than try to purge them.
+    applicationCode = newApplicationCode();
+    callerContexts = newCallerContexts();
   }
 
   // ========== FILESYSTEM READ ENTRY POINTS ==========
@@ -552,16 +582,16 @@ public final class BootstrapEnforcer {
    */
   private static void enforce(Operation op, Object arg0, int arg1, EnforcementCallback cb) {
     // Determine caller
-    CallerInfo caller;
+    CallerContext caller;
     try {
-      caller = determineCallerInfo();
+      caller = determineCallerContext();
     } catch (Exception e) {
       handleError(op, arg0, arg1, "Failed to determine caller", e);
       return;
     }
 
-    // Unknown caller = JVM internal operation, allow in all modes
-    if (!caller.known()) {
+    // No application frame on the stack = JVM internal operation, allow in all modes
+    if (caller == null) {
       LOG.debug("Allowing {} from unknown caller (JVM internal)", op);
       return;
     }
@@ -574,7 +604,7 @@ public final class BootstrapEnforcer {
 
     // Call the enforcement callback
     try {
-      SecurityException denial = cb.check(caller.toContext(), op, arg0, arg1);
+      SecurityException denial = cb.check(caller, op, arg0, arg1);
 
       if (denial != null) {
         // Always increment denial counters (all modes, zero overhead)
@@ -691,24 +721,53 @@ public final class BootstrapEnforcer {
    * Determines the calling code's package and module.
    *
    * <p>Walks the stack to find the first frame that is application code (not JDK, jGuard, or
-   * ByteBuddy infrastructure).
+   * ByteBuddy infrastructure), then answers from a per-class cache. Both the answer and the
+   * is-this-application-code test are pure functions of the class, so neither is recomputed.
+   *
+   * @return the caller's context, or null when no application frame is on the stack (a JVM-internal
+   *     operation), which is a property of the stack and therefore not cacheable
    */
-  private static CallerInfo determineCallerInfo() {
-    return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
-        .walk(
-            frames ->
-                frames
-                    .map(StackWalker.StackFrame::getDeclaringClass)
-                    .filter(BootstrapEnforcer::isApplicationCode)
-                    .findFirst()
-                    .map(CallerInfo::from)
-                    .orElse(CallerInfo.UNKNOWN));
+  private static CallerContext determineCallerContext() {
+    ClassValue<CallerContext> contexts = callerContexts;
+    ClassValue<Boolean> isApp = applicationCode;
+    return WALKER.walk(
+        frames ->
+            frames
+                .map(StackWalker.StackFrame::getDeclaringClass)
+                .filter(isApp::get)
+                .findFirst()
+                .map(contexts::get)
+                .orElse(null));
+  }
+
+  /** A fresh attribution cache, bound to the skip prefixes in force when it is created. */
+  private static ClassValue<CallerContext> newCallerContexts() {
+    return new ClassValue<>() {
+      @Override
+      protected CallerContext computeValue(Class<?> type) {
+        Module module = type.getModule();
+        String moduleName = module.isNamed() ? module.getName() : "unnamed";
+        return new CallerContext(type.getPackageName(), moduleName);
+      }
+    };
+  }
+
+  /** A fresh application-code cache, bound to the skip prefixes in force when it is created. */
+  private static ClassValue<Boolean> newApplicationCode() {
+    return new ClassValue<>() {
+      @Override
+      protected Boolean computeValue(Class<?> type) {
+        return isApplicationCode(type);
+      }
+    };
   }
 
   /**
    * Checks if a class is application code (not infrastructure).
    *
-   * <p>Uses the configurable skipPrefixes to determine what to skip.
+   * <p>Uses the configurable skipPrefixes to determine what to skip. Callers should go through
+   * {@link #applicationCode} rather than calling this directly; it is the uncached computation
+   * behind that cache.
    */
   private static boolean isApplicationCode(Class<?> clazz) {
     String name = clazz.getName();
@@ -741,22 +800,4 @@ public final class BootstrapEnforcer {
 
   // ========== INTERNAL TYPES ==========
 
-  /**
-   * Information about the caller making a capability request (internal).
-   *
-   * <p>Uses a boolean sentinel {@code known()} instead of string comparison for unknown callers.
-   */
-  private record CallerInfo(String packageName, String moduleName, boolean known) {
-    static final CallerInfo UNKNOWN = new CallerInfo("", "", false);
-
-    static CallerInfo from(Class<?> clazz) {
-      Module module = clazz.getModule();
-      String moduleName = module.isNamed() ? module.getName() : "unnamed";
-      return new CallerInfo(clazz.getPackageName(), moduleName, true);
-    }
-
-    CallerContext toContext() {
-      return new CallerContext(packageName, moduleName);
-    }
-  }
 }
