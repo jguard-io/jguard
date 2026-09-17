@@ -11,6 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sun.management.ThreadMXBean;
 import java.lang.management.ManagementFactory;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -75,21 +77,43 @@ class CallerAttributionCostRegressionTest {
   @Test
   @DisplayName("changing skip prefixes invalidates the attribution caches")
   void changingSkipPrefixesInvalidatesCaches() {
-    // Attribute once so both caches hold an answer for this test class computed under the defaults.
-    BootstrapEnforcer.onPropertyRead("java.version");
+    List<CallerContext> seen = new ArrayList<>();
+    BootstrapEnforcer.setCallback(
+        (caller, op, arg0, arg1) -> {
+          seen.add(caller);
+          return null;
+        });
 
     try {
-      // Skip this test's own package. The cached answer said it was application code; after the
-      // change it must not, or attribution is serving decisions made under prefixes no longer in
-      // force -- a correctness bug, not a performance one.
-      BootstrapEnforcer.setSkipPrefixes(new String[] {"io.jguard.bootstrap."});
+      // Attribute once under the defaults, so both caches hold an answer for this class.
       BootstrapEnforcer.onPropertyRead("java.version");
+      assertThat(seen)
+          .as("the test class should be attributed as application code under default prefixes")
+          .isNotEmpty();
+      String underDefaults = seen.get(seen.size() - 1).packageName();
+
+      // Now exclude whatever package attribution just resolved to, plus the defaults that got us
+      // there. Attribution must re-evaluate and walk past it to the next application frame. If the
+      // caches were reused it would keep reporting the excluded package -- an answer computed under
+      // prefixes no longer in force.
+      BootstrapEnforcer.setSkipPrefixes(
+          new String[] {
+            "io.jguard.bootstrap.", "io.jguard.agent.", "java.", "sun.", "jdk.", underDefaults
+          });
+      BootstrapEnforcer.onPropertyRead("java.version");
+
+      assertThat(seen).hasSizeGreaterThan(1);
+      String afterChange = seen.get(seen.size() - 1).packageName();
+
+      assertThat(afterChange)
+          .as(
+              "attribution still reported %s after that package was excluded, so a cached answer"
+                  + " outlived the prefixes it was computed under",
+              underDefaults)
+          .isNotEqualTo(underDefaults);
     } finally {
       BootstrapEnforcer.setSkipPrefixes(null);
+      BootstrapEnforcer.setCallback(null);
     }
-
-    // Reaching here without error is the assertion: the caches were replaced rather than reused.
-    // A stale cache would keep attributing to a package the new prefixes exclude.
-    assertThat(BootstrapEnforcer.class).isNotNull();
   }
 }
