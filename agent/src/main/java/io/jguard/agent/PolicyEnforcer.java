@@ -10,8 +10,10 @@ package io.jguard.agent;
 import io.jguard.bootstrap.AgentConfig;
 import io.jguard.bootstrap.AgentLogger;
 import io.jguard.bootstrap.CallerContext;
+import io.jguard.bootstrap.DenialStormGuard;
 import io.jguard.bootstrap.EnforcementMode;
 import io.jguard.bootstrap.Operation;
+import io.jguard.bootstrap.SuppressedDenial;
 import io.jguard.policy.model.ApplicationPolicy;
 import io.jguard.policy.model.CapabilityArgument;
 import io.jguard.policy.model.Entitlement;
@@ -157,6 +159,9 @@ public final class PolicyEnforcer {
       LOG.debug("No policy for module: {}", callerModule);
       // Record denial for audit mode - use caller module since no policy exists
       recordAuditDenial(callerModule, op, arg0);
+      if (!DenialStormGuard.shouldDetail(callerModule, op)) {
+        return SuppressedDenial.INSTANCE;
+      }
       return deniedNoPolicy(callerPackage, callerModule, formatDetails(op, arg0, arg1));
     }
 
@@ -182,9 +187,15 @@ public final class PolicyEnforcer {
     if (cacheKey != null) {
       Boolean cached = decisionCache.get(cacheKey);
       if (cached != null) {
-        return cached
-            ? null
-            : denied(callerPackage, op.capabilityName(), formatDetails(op, arg0, arg1));
+        if (cached) {
+          return null;
+        }
+        // The storm path runs through here: once a denial is cached, every later one is a cache
+        // hit, so this is where describing a repeated denial has to stop costing anything.
+        if (!DenialStormGuard.shouldDetail(moduleName, op)) {
+          return SuppressedDenial.INSTANCE;
+        }
+        return denied(callerPackage, op.capabilityName(), formatDetails(op, arg0, arg1));
       }
     }
 
@@ -199,6 +210,9 @@ public final class PolicyEnforcer {
     if (!allowed) {
       // Record denial for audit mode suggested policy output
       recordAuditDenial(moduleName, op, arg0);
+      if (!DenialStormGuard.shouldDetail(moduleName, op)) {
+        return SuppressedDenial.INSTANCE;
+      }
       return denied(callerPackage, op.capabilityName(), formatDetails(op, arg0, arg1));
     }
     return null;
