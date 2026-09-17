@@ -610,22 +610,37 @@ public final class BootstrapEnforcer {
         // Always increment denial counters (all modes, zero overhead)
         DenialCounters.increment(op);
 
+        // Describing a denial costs far more than making one: a formatted message, a record, a
+        // stack and a log line. One missing entitlement on an initialisation path can be denied
+        // hundreds of thousands of times a second, and that has exhausted the heap of the very
+        // application jGuard was protecting. Past a threshold the enforcer stops describing --
+        // never denying. The decision below is untouched and the counters above are unconditional,
+        // so a storm is still fully accounted for even while it is quiet.
+        //
+        // The enforcer consults DenialStormGuard, not this class: by the time the callback returns,
+        // the expensive part -- a SecurityException carrying a stack -- has already been built or
+        // deliberately not built. It reports which by returning the shared stackless instance, so
+        // the window is counted exactly once per denial rather than once on each side.
+        boolean detail = !(denial instanceof SuppressedDenial);
+
         // Access denied
         if (mode == EnforcementMode.AUDIT) {
-          // Audit mode: accumulate denials for summary at shutdown
-          String args = formatArgs(op, arg0, arg1);
-          DenialRecord record =
-              new DenialRecord(caller.moduleName(), caller.packageName(), op, args);
-          auditDenials.add(record);
-          if (logDenied) {
-            LOG.warn(
-                "DENIED {}: package={}, module={}, args={}",
-                op,
-                caller.packageName(),
-                caller.moduleName(),
-                args);
+          if (detail) {
+            // Audit mode: accumulate denials for summary at shutdown
+            String args = formatArgs(op, arg0, arg1);
+            DenialRecord record =
+                new DenialRecord(caller.moduleName(), caller.packageName(), op, args);
+            auditDenials.add(record);
+            if (logDenied) {
+              LOG.warn(
+                  "DENIED {}: package={}, module={}, args={}",
+                  op,
+                  caller.packageName(),
+                  caller.moduleName(),
+                  args);
+            }
           }
-        } else if (logDenied) {
+        } else if (logDenied && detail) {
           // STRICT: log at ERROR (denials are real problems, must not be missed)
           // PERMISSIVE: log at WARN
           if (mode == EnforcementMode.STRICT) {
