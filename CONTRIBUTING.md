@@ -208,7 +208,29 @@ class ThreadCreateTest {
 
 ### Integration Tests
 
-Add a test case in `samples/sandbox-demo` that exercises the new capability with the agent.
+`agent/src/integrationTest/java` — the agent attached to a forked JVM against a real compiled
+policy. This is the first layer where instrumentation actually runs, so it is where a capability is
+proven to be enforced rather than merely decided. Compile a policy with `jguardc` and attach the
+shaded jar; the task passes its path as `jguard.agent.jar`.
+
+Add a case in `samples/sandbox-demo` as well when the capability is worth demonstrating.
+
+### Regression Tests
+
+`agent/src/regressionTest/java` — pins behaviour that has broken before, so it cannot break again
+the same way. A regression test names the defect it guards and fails loudly if the property stops
+holding.
+
+Cost belongs here too. An entitlement that is merely missing should not be able to exhaust a heap,
+so where a path has a known allocation or latency ceiling, assert it — measure with
+`com.sun.management.ThreadMXBean.getThreadAllocatedBytes` rather than wall clock, which is far less
+noisy on CI. Assert a ceiling with headroom, not an exact figure.
+
+### Smoke Tests
+
+`agent/src/smokeTest/java` — end to end: agent plus a workload, asserting the process starts, stays
+up, and does its job. These answer "is it alive and sane", not "is it correct"; they are the layer
+that would have caught an agent that killed the application it was guarding.
 
 ## Capability Design Guidelines
 
@@ -248,8 +270,14 @@ Add a test case in `samples/sandbox-demo` that exercises the new capability with
 ## Building and Testing
 
 ```bash
-# Build all modules
+# Build all modules (runs every test layer, because `check` depends on them)
 ./gradlew build
+
+# Run one layer
+./gradlew test                 # unit
+./gradlew integrationTest      # agent attached, real policy
+./gradlew regressionTest       # defects that must not return, including cost ceilings
+./gradlew smokeTest            # end to end: does it start, stay up, and work
 
 # Run sandbox-demo without agent (no enforcement)
 cd samples/sandbox-demo && ../../gradlew run

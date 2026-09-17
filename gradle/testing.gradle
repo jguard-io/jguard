@@ -1,0 +1,65 @@
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// The jGuard Contributors require contributions made to
+// this file be licensed under the Apache-2.0 license or a
+// compatible open source license.
+//
+import org.gradle.api.tasks.testing.Test
+
+// Four test layers, applied from the root build to every subproject.
+//
+//   test            unit        - a class in isolation: no agent, no fork
+//   integrationTest integration - the agent attached to a forked JVM against a real compiled policy
+//   regressionTest  regression  - pins behaviour that has broken before, including cost ceilings
+//   smokeTest       smoke       - end to end: agent plus a workload, asserting the process survives
+//
+// Each layer is wired into `check`, because CI gates `build`; a suite `build` never reaches is a
+// suite nobody runs. `./gradlew check` therefore runs all four in every subproject.
+//
+// Layers that attach the agent receive the shaded agent jar as `jguard.agent.jar`. It is resolved in
+// doFirst so the path is not read at configuration time - the same reason the existing `test` task
+// in :agent does it that way.
+
+def testLayers = ["integrationTest", "regressionTest", "smokeTest"]
+
+testLayers.each { layer ->
+  sourceSets.create(layer) {
+    compileClasspath += sourceSets.main.output + sourceSets.test.output
+    runtimeClasspath += sourceSets.main.output + sourceSets.test.output
+  }
+
+  // Each layer sees whatever the unit tests see, so helpers are shared rather than duplicated.
+  configurations.named("${layer}Implementation") {
+    extendsFrom configurations.testImplementation
+  }
+  configurations.named("${layer}RuntimeOnly") {
+    extendsFrom configurations.testRuntimeOnly
+  }
+
+  def layerTask = tasks.register(layer, Test) {
+    description = "Runs the ${layer} suite."
+    group = "verification"
+    testClassesDirs = sourceSets[layer].output.classesDirs
+    classpath = sourceSets[layer].runtimeClasspath
+    shouldRunAfter tasks.named("test")
+  }
+
+  tasks.named("check") {
+    dependsOn layerTask
+  }
+}
+
+// Only :agent builds a shaded agent jar, and its plain `jar` is disabled in favour of shadowJar, so
+// depend on that task specifically rather than on `jar`.
+if (project.name == "agent") {
+  testLayers.each { layer ->
+    tasks.named(layer) {
+      def agentJarProvider = tasks.named("shadowJar").flatMap { it.archiveFile }
+      dependsOn tasks.named("shadowJar")
+      doFirst {
+        systemProperty("jguard.agent.jar", agentJarProvider.get().asFile.absolutePath)
+      }
+    }
+  }
+}

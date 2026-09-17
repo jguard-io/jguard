@@ -57,6 +57,10 @@ subprojects {
     testImplementation(libs.assertj)
   }
 
+  // Four test layers: unit (`test`), integration, regression, smoke. Applied here so every
+  // subproject gets the same homes and `check` runs all of them.
+  apply from: rootProject.file("gradle/testing.gradle")
+
   // ---- Artifact naming: jguard-<module> ----
   // :core -> jguard-core, :policy-java -> jguard-policy-java, etc.
   def moduleName = project.path.substring(1).replace(":", "-")
