@@ -660,7 +660,59 @@ public final class BootstrapEnforcer {
           }
         }
         if (mode.blocksOnDenied()) {
-          throw denial;
+          // A denial must never be able to take the host down, and inside a class initialiser it
+          // can. Any throwable that escapes <clinit> is wrapped by the JVM as
+          // ExceptionInInitializerError -- an Error, not an Exception -- so it passes every
+          // catch(Exception) between here and the top of the thread, and hosts that treat Error as
+          // fatal terminate. The damage outlives the throw: the class is marked erroneous for the
+          // life of the JVM, so every later touch raises NoClassDefFoundError and not even a
+          // hot-reloaded policy can revive it. Enforcement is recoverable by design; this is the
+          // one path where it is not.
+          //
+          // Seen on lucenia-trial on 2026-09-18. A missing system.property.read grant for
+          // java.net.useSystemProxies was denied inside sun.net.spi.DefaultProxySelector's static
+          // initialiser, on the first request the AWS SDK made through HttpClient. Fifteen denials
+          // killed five nodes -- the engine's memory layer, down, from one absent line of policy.
+          //
+          // So in initialiser context the decision is recorded and not thrown. That is a real
+          // weakening and is stated plainly rather than hidden: the operation PROCEEDS where it
+          // would otherwise have been blocked. It is the deliberate trade. A policy gap that
+          // reaches this branch is a bug to be fixed in policy, and it is reported loudly enough to
+          // find -- logged at ERROR with the initialiser named, counted separately from ordinary
+          // denials, and exposed over JMX -- but a policy gap must cost a denial, never a JVM.
+          // Looked for only when this denial is being described. The check is a stack question, so
+          // unlike attribution it cannot be cached, and it is not cheap: attribution stops at the
+          // first application frame, while this one usually matches nothing and so walks to the
+          // bottom. Measured at 19,440 bytes per call against a 1,968-byte allowed call -- run
+          // unconditionally it would allocate gigabytes a second under a denial storm and exhaust
+          // the heap, which is the other way an enforcer kills its host and the one
+          // DenialStormGuard
+          // already exists to prevent. Trading one fatal failure for another is not a fix.
+          //
+          // Gating on detail costs no coverage where it matters. A class initialiser runs exactly
+          // once, so a denial raised inside one is by construction the first denial for that class,
+          // and the guard grants detail to first denials -- the fifteen that killed lucenia-trial
+          // were every one of them logged in full. The residual gap is narrow and real and is not
+          // papered over: if an unrelated storm on the SAME module and operation has already driven
+          // the guard into suppression, an initialiser denial arriving inside that window is thrown
+          // as before. Closing it needs the guard to grant detail per initialising class rather
+          // than
+          // per module, which is a change to DenialStormGuard and belongs in its own commit.
+          StackTraceElement initializer = detail ? enclosingClassInitializer() : null;
+          if (initializer != null) {
+            DenialCounters.incrementInitializerUnenforced(op);
+            LOG.error(
+                "DENIED {} inside class initialiser {}.<clinit> -- NOT enforced: throwing here"
+                    + " would escape as ExceptionInInitializerError and terminate the host."
+                    + " The operation was ALLOWED. Fix the policy: package={}, module={}, args={}",
+                op,
+                initializer.getClassName(),
+                caller.packageName(),
+                caller.moduleName(),
+                formatArgs(op, arg0, arg1));
+          } else {
+            throw denial;
+          }
         }
       } else {
         // Access allowed
@@ -752,6 +804,36 @@ public final class BootstrapEnforcer {
                 .filter(isApp::get)
                 .findFirst()
                 .map(contexts::get)
+                .orElse(null));
+  }
+
+  /**
+   * Returns the class initialiser a throw from here would escape, or null if there is none.
+   *
+   * <p>Answers a question about the stack rather than about a class, so unlike attribution it
+   * cannot be cached: the same method denied from a static initialiser and from ordinary code must
+   * give different answers.
+   *
+   * <p>Deliberately conservative. A {@code <clinit>} frame anywhere below this point is treated as
+   * fatal context even though an intervening frame might have caught the exception before it
+   * reached the initialiser, because whether it would is not knowable from here -- and the cost of
+   * being wrong is asymmetric. Guessing "not an initialiser" wrongly kills the JVM and poisons a
+   * class permanently; guessing "initialiser" wrongly lets one operation through and logs it.
+   *
+   * <p>Expensive by nature: it short-circuits on the first initialiser frame, but the common answer
+   * is "none", and reaching it means walking every frame. Callers must keep it off hot paths -- it
+   * runs neither on the allow path nor on a suppressed denial, only where a denial is already being
+   * described.
+   *
+   * @return the initialiser frame, for the log message, or null when throwing is safe
+   */
+  private static StackTraceElement enclosingClassInitializer() {
+    return WALKER.walk(
+        frames ->
+            frames
+                .filter(f -> "<clinit>".equals(f.getMethodName()))
+                .findFirst()
+                .map(StackWalker.StackFrame::toStackTraceElement)
                 .orElse(null));
   }
 

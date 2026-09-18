@@ -87,4 +87,9 @@ public final class DenialCountersMBeanImpl implements DenialCountersMBean {
   public long getRuntimeShutdownHookDenials() {
     return DenialCounters.count(Operation.RUNTIME_SHUTDOWN_HOOK);
   }
+
+  @Override
+  public long getInitializerUnenforcedDenials() {
+    return DenialCounters.initializerUnenforcedCount();
+  }
 }

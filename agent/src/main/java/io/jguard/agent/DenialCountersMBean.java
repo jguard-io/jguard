@@ -57,4 +57,14 @@ public interface DenialCountersMBean {
 
   /** Returns denial count for runtime.shutdown_hook operations. */
   long getRuntimeShutdownHookDenials();
+
+  /**
+   * Returns the number of denials deliberately left unenforced because they arose inside a class
+   * initialiser, where throwing would have escaped as {@code ExceptionInInitializerError} and
+   * terminated the host.
+   *
+   * <p>Any non-zero value is a policy gap: the operation was ALLOWED. The accompanying ERROR log
+   * names the initialiser and the entitlement to add.
+   */
+  long getInitializerUnenforcedDenials();
 }
