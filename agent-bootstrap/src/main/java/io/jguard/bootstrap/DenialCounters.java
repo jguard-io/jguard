@@ -24,6 +24,7 @@ public final class DenialCounters {
 
   private static final AtomicLong totalCount = new AtomicLong();
   private static final EnumMap<Operation, AtomicLong> perOperation = new EnumMap<>(Operation.class);
+  private static final AtomicLong initializerUnenforcedCount = new AtomicLong();
 
   static {
     for (Operation op : Operation.values()) {
@@ -39,9 +40,31 @@ public final class DenialCounters {
     perOperation.get(op).incrementAndGet();
   }
 
+  /**
+   * Records a denial that was decided but deliberately not thrown, because the throw would have
+   * escaped a class initialiser and terminated the host.
+   *
+   * <p>Called in addition to {@link #increment(Operation)}, never instead of it: the denial
+   * happened and belongs in the totals. This counter answers a different question -- how much
+   * policy is being left unenforced to keep the JVM alive -- and any non-zero value is a policy gap
+   * worth closing.
+   */
+  static void incrementInitializerUnenforced(Operation op) {
+    initializerUnenforcedCount.incrementAndGet();
+  }
+
   /** Returns the total denial count across all operations. */
   public static long totalCount() {
     return totalCount.get();
+  }
+
+  /**
+   * Returns the number of denials that were not enforced because they arose inside a class
+   * initialiser. Non-zero means policy is incomplete: see the ERROR log for the initialiser and the
+   * entitlement to add.
+   */
+  public static long initializerUnenforcedCount() {
+    return initializerUnenforcedCount.get();
   }
 
   /** Returns the denial count for a specific operation. */
@@ -60,5 +83,6 @@ public final class DenialCounters {
   public static void reset() {
     totalCount.set(0);
     perOperation.values().forEach(c -> c.set(0));
+    initializerUnenforcedCount.set(0);
   }
 }
