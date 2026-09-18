@@ -234,6 +234,37 @@ public final class BootstrapEnforcer {
   }
 
   /**
+   * Returns whether denied operations are logged.
+   *
+   * <p>Readable so a management interface can report what is in force rather than guess it from the
+   * system properties the JVM started with, which stop being the truth the moment anything changes
+   * either setting at runtime.
+   *
+   * @return true if denials are logged
+   */
+  public static boolean logDenied() {
+    return logDenied;
+  }
+
+  /**
+   * Returns whether allowed operations are logged.
+   *
+   * @return true if allowed operations are logged
+   */
+  public static boolean logAllowed() {
+    return logAllowed;
+  }
+
+  /**
+   * Returns the current enforcement mode.
+   *
+   * @return the mode in force
+   */
+  public static EnforcementMode mode() {
+    return mode;
+  }
+
+  /**
    * Configures skip prefixes for caller attribution.
    *
    * <p>Classes matching these prefixes are skipped when walking the stack to find the caller.

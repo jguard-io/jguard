@@ -108,6 +108,9 @@ public final class AgentInitializer {
     // Register JMX MBean for denial counters (always on, zero config)
     registerDenialCountersMBean();
 
+    // Register JMX control so logging can be changed without restarting the JVM
+    registerControlMBean();
+
     // Install instrumentation
     installInstrumentation(inst);
 
@@ -210,6 +213,28 @@ public final class AgentInitializer {
       }
     } catch (Exception e) {
       LOG.warn("Failed to register JMX MBean: {}", e.getMessage());
+    }
+  }
+
+  /**
+   * Registers the JMX control MBean. Failures are logged but don't prevent startup.
+   *
+   * <p>Logging was fixed for the life of the process before this: the properties were read once and
+   * written into the bootstrap enforcer, so changing either meant restarting -- and on a clustered
+   * application, restarting every node. Allowed-operation logging is the setting that makes this
+   * matter, being a line per intercepted operation: useful for a minute, ruinous for an hour, and
+   * not something anyone should have to plan a rolling restart around in either direction.
+   */
+  private static void registerControlMBean() {
+    try {
+      var server = ManagementFactory.getPlatformMBeanServer();
+      var name = new ObjectName("io.jguard:type=Control");
+      if (!server.isRegistered(name)) {
+        server.registerMBean(new StandardMBean(new ControlMBeanImpl(), ControlMBean.class), name);
+        LOG.debug("JMX MBean registered: {}", name);
+      }
+    } catch (Exception e) {
+      LOG.warn("Failed to register control MBean: {}", e.getMessage());
     }
   }
 

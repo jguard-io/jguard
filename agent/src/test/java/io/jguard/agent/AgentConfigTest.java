@@ -36,10 +36,13 @@ class AgentConfigTest {
     }
 
     @Test
-    @DisplayName("defaults to true in AUDIT mode")
-    void defaultsTrueInAuditMode() {
+    @DisplayName("defaults to false in AUDIT mode -- the firehose is opt-in")
+    void defaultsFalseInAuditMode() {
+      // AUDIT logged every allowed operation at INFO: a line for every property read, file open
+      // and socket connect the application makes. That measured around forty lines a second on one
+      // production node, burying the denials that are the whole reason to run audit mode.
       AgentConfig config = builder().mode(EnforcementMode.AUDIT).build();
-      assertThat(config.logAllowed()).isTrue();
+      assertThat(config.logAllowed()).isFalse();
     }
 
     @Test
@@ -57,8 +60,8 @@ class AgentConfigTest {
     }
 
     @Test
-    @DisplayName("explicit false overrides AUDIT mode default")
-    void explicitFalseOverridesAuditMode() {
+    @DisplayName("explicit false in AUDIT mode stays false")
+    void explicitFalseInAuditModeStaysFalse() {
       AgentConfig config = builder().mode(EnforcementMode.AUDIT).logAllowed(false).build();
       assertThat(config.logAllowed()).isFalse();
     }

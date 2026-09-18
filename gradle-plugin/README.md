@@ -157,7 +157,7 @@ tasks.named("runWithAgent") {
 |------|----------|
 | `strict` | Deny unauthorized operations and throw `SecurityException` |
 | `permissive` | Log violations but allow operations to proceed |
-| `audit` | Log all operations (allowed and denied) without blocking |
+| `audit` | Log every denial without blocking. Allowed operations are logged only with `jguard.log.allowed=true`, since that is a line for every property read, file open and socket connect the application makes |
 
 Override the mode at runtime:
 
