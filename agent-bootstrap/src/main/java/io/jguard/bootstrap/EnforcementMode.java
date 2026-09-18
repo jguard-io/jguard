@@ -54,15 +54,26 @@ public enum EnforcementMode {
   PERMISSIVE,
 
   /**
-   * Audit mode: log all decisions but never block.
+   * Audit mode: decide everything, block nothing.
    *
    * <p>This mode is for testing and policy development:
    *
    * <ul>
-   *   <li>All capability checks are logged (allowed and denied)
+   *   <li>Every denial is logged, so a policy can be completed from a running application
    *   <li>No operations are blocked
    *   <li>Useful for discovering what entitlements an application needs
    * </ul>
+   *
+   * <p>Allowed operations are <em>not</em> logged unless asked for. They used to be, and the cost
+   * is not what it sounds like: jGuard intercepts every property read, file open and socket connect
+   * the application makes, so logging the allowed ones is a line per intercepted operation, at
+   * INFO, for as long as the process runs. On a production node that measured around forty lines a
+   * second -- and what it reports is the entitlements the policy already grants, which is the half
+   * nobody is hunting. The denials are the signal, and audit mode exists to find those.
+   *
+   * <p>Set {@code jguard.log.allowed=true} to turn it on deliberately, or toggle it on a running
+   * JVM through the {@code io.jguard:type=Control} MBean -- which is the better tool anyway, since
+   * the firehose is only wanted for the minute someone is actually reading it.
    */
   AUDIT;
 
@@ -104,11 +115,21 @@ public enum EnforcementMode {
   }
 
   /**
-   * Returns true if this mode logs allowed operations.
+   * Returns true if this mode logs allowed operations by default.
    *
-   * @return true if allowed operations should be logged
+   * <p>No mode does. AUDIT used to, on the reasoning that an audit should record every decision,
+   * and that does not survive contact with an intercepted JVM: an allowed operation is every
+   * property read, file open and socket connect the application performs, so the log becomes a line
+   * per operation at INFO and the interesting half -- the denials, which AUDIT still logs in full
+   * -- is buried in it. Turning the firehose on is now a deliberate act: {@code
+   * jguard.log.allowed=true}, or the {@code io.jguard:type=Control} MBean at runtime.
+   *
+   * <p>Kept as a per-mode decision rather than deleted so a future mode can answer differently
+   * without reopening every call site.
+   *
+   * @return true if allowed operations should be logged when not set explicitly
    */
   public boolean logsAllowed() {
-    return this == AUDIT;
+    return false;
   }
 }

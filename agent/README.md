@@ -86,6 +86,10 @@ This separation enables:
 
 Audit mode is designed for initial policy authoring and debugging. Instead of blocking operations, it logs all denials and generates suggested policy at JVM shutdown.
 
+Denials are what audit mode reports. Allowed operations are **not** logged unless you ask for them with `-Djguard.log.allowed=true`, because an allowed operation is every property read, file open and socket connect the application performs — a line per intercepted operation, at INFO, for as long as the process runs. On a production node that measured around forty lines a second, and what it reports is the entitlements the policy already grants.
+
+Both logging flags can be changed on a running JVM through the `io.jguard:type=Control` MBean (`LogAllowed`, `LogDenied`), so the firehose can be switched on to answer a question and switched off again without a restart. The enforcement mode is exposed there read-only: policy comes from signed policy files, and a management port is not a place to edit a running process's security posture.
+
 ### Running in Audit Mode
 
 ```bash
