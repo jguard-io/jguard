@@ -7,6 +7,7 @@
  */
 package io.jguard.agent;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -323,6 +324,43 @@ class PolicyEnforcerTest {
 
       // Second call should hit cache
       assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app"), dataFile))
+          .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("stays bounded when every check names a new file")
+    void staysBoundedUnderNewFiles() {
+      PolicyDescriptor policy = createPolicy("com.example.app", fsReadEntitlement(dataRoot, "*"));
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      // A Lucene index writes new segment files on every refresh and merge, so each check is a
+      // path the cache has never seen
+      for (int i = 0; i < PolicyEnforcer.MAX_CACHED_DECISIONS * 3; i++) {
+        checkFsRead(enforcer, caller("com.example.app"), tempDir.resolve("_" + i + ".cfs"));
+        assertThat(enforcer.cachedDecisions())
+            .isLessThanOrEqualTo(PolicyEnforcer.MAX_CACHED_DECISIONS);
+      }
+    }
+
+    @Test
+    @DisplayName("answers the same after the cache overflows")
+    void answersTheSameAfterOverflow() {
+      PolicyDescriptor policy = createPolicy("com.example.app", fsReadEntitlement(dataRoot, "*"));
+      PolicyEnforcer enforcer = createEnforcer(policy);
+
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app"), dataFile))
+          .doesNotThrowAnyException();
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app"), outsideFile))
+          .isInstanceOf(SecurityException.class);
+
+      for (int i = 0; i <= PolicyEnforcer.MAX_CACHED_DECISIONS; i++) {
+        checkFsRead(enforcer, caller("com.example.app"), tempDir.resolve("_" + i + ".cfs"));
+      }
+
+      // Both decisions were dropped with the cache; re-evaluating them must not change either
+      assertThatCode(() -> checkFsRead(enforcer, caller("com.example.app"), dataFile))
+          .doesNotThrowAnyException();
+      assertThatThrownBy(() -> checkFsRead(enforcer, caller("com.example.app"), outsideFile))
           .isInstanceOf(SecurityException.class);
     }
   }

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.0] - Unreleased
 
+### Fixed
+
+- **Decision cache grew without bound**: filesystem decisions are cached by full path, and nothing was ever evicted. A process that keeps creating files adds one entry per file for as long as it runs. A Lucene-based search node writes new segment files on every refresh and merge, and reached 17M entries and 3.7 GB of a 4 GB heap after three days, until the parent circuit breaker refused every request. The cache is now capped at 16,384 decisions and dropped when full. It then refills from the paths still in use, so memory stays flat and a hot path pays one re-evaluation per overflow.
+
 ## [0.4.1] - Unreleased
 
 ### Fixed
