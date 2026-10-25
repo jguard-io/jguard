@@ -10,9 +10,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, '0.*']
   pull_request:
-    branches: [main]
+    # Release branches too: backports and release bumps land on 0.x and must pass the same matrix
+    branches: [main, '0.*']
 
 permissions:
   contents: read
