@@ -47,6 +47,13 @@ public final class PolicyEnforcer {
   // Cache: "module:package:capability:args" -> allowed
   private final Map<String, Boolean> decisionCache = new ConcurrentHashMap<>();
 
+  // Bound on cached decisions. Filesystem keys carry the full path, so a process that keeps
+  // creating files adds an entry per file for as long as it runs: Lucene writes new segment files
+  // on every refresh and merge, and a search node reached 17M entries and 3.7 GB of a 4 GB heap
+  // in three days. Past the bound the cache is dropped and refills from the paths still in use,
+  // which costs a hot path one re-evaluation per overflow and keeps memory flat.
+  static final int MAX_CACHED_DECISIONS = 16_384;
+
   // Audit mode denial accumulation: module -> set of (capability, hasArgs)
   private final Map<String, Set<AuditDenial>> auditDenials = new ConcurrentHashMap<>();
 
@@ -122,6 +129,11 @@ public final class PolicyEnforcer {
     return policy;
   }
 
+  /** Returns how many decisions are cached; exposed so tests can hold the cache to its bound. */
+  int cachedDecisions() {
+    return decisionCache.size();
+  }
+
   // ========== SINGLE DISPATCH ENTRY POINT ==========
 
   /**
@@ -193,6 +205,9 @@ public final class PolicyEnforcer {
 
     // Cache result if key is available
     if (cacheKey != null) {
+      if (decisionCache.size() >= MAX_CACHED_DECISIONS) {
+        decisionCache.clear();
+      }
       decisionCache.put(cacheKey, allowed);
     }
 
